@@ -1,0 +1,27 @@
+{
+  "name": "starhop",
+  "version": "1.1.0",
+  "description": "Starhop: a 3D planet-hopping mining and building game for the browser (Three.js + TypeScript), built for CrazyGames.",
+  "scripts": {
+    "dev": "node build.mjs --watch",
+    "build": "node build.mjs",
+    "typecheck": "tsc -p .",
+    "test": "node test/run.mjs",
+    "check": "tsc -p . && node test/run.mjs && node build.mjs",
+    "package": "node build.mjs && cd dist/crazygames && zip -q ../starhop-crazygames.zip index.html && echo dist/starhop-crazygames.zip"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "three": "0.160.0"
+  },
+  "devDependencies": {
+    "@types/three": "0.160.0",
+    "esbuild": "0.24.0",
+    "typescript": "5.6.3"
+  },
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  }
+}
