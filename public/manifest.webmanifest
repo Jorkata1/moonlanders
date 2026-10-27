@@ -1,0 +1,14 @@
+{
+  "name": "Moonlanders",
+  "short_name": "Moonlanders",
+  "description": "Dig resources, build machines and launch your rocket across the solar system.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#05060f",
+  "theme_color": "#05060f",
+  "icons": [
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
