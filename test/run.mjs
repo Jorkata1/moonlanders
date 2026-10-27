@@ -1,4 +1,4 @@
-// Runs the headless simulation tests: a bot plays the whole Moon, plus backpack/drop/robot checks.
+// Runs the headless simulation tests: a bot plays every planet in order, plus save and backpack/drop/robot checks.
 // Usage: npm test
 import { build } from "esbuild";
 import { execFileSync } from "node:child_process";
@@ -16,8 +16,10 @@ for (const name of ["autoplay", "inventory"]) {
   console.log(`\n── ${name} ──`);
   const output = execFileSync(process.execPath, [file], { encoding: "utf8" });
   process.stdout.write(output);
-  if (name === "autoplay" && !output.includes("finished: true")) failed = true;
-  if (name === "autoplay" && !output.includes("save roundtrip ok: true")) failed = true;
+  if (name === "autoplay" && !output.includes("\nfinished: true")) failed = true;
+  if (name === "autoplay" && output.includes("save roundtrip ok: false")) failed = true;
+  if (name === "autoplay" && !output.includes("legacy save ok: true")) failed = true;
+  if (name === "autoplay" && !output.includes("unknown planet falls back: true")) failed = true;
   if (name === "inventory" && !output.includes('"ok":true')) failed = true;
 }
 

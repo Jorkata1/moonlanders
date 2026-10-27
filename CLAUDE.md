@@ -1,6 +1,6 @@
 # Starhop
 
-A 3D browser game for CrazyGames: an astronaut mines resources, builds machines and robots, and loads a rocket to hop to the next planet (in the style of Moon Pioneer). Planet 1 (the Moon) is complete; Mars and an ice moon are planned.
+A 3D browser game for CrazyGames: an astronaut mines resources, builds machines and robots, and loads a rocket to hop to the next planet (in the style of Moon Pioneer). The Moon and Mars are playable; an ice moon is planned. Travelling keeps suit upgrades and credits; everything else starts fresh on each planet.
 
 The owner (Жоро) usually writes in Bulgarian, so reply in Bulgarian. In-game text stays in English, because most CrazyGames players read English.
 
@@ -9,7 +9,7 @@ The owner (Жоро) usually writes in Bulgarian, so reply in Bulgarian. In-game
 - `npm install`: install dependencies (three 0.160, esbuild, TypeScript).
 - `npm run dev`: rebuild on every save and serve at http://localhost:5173. Reload the browser after changes.
 - `npm run typecheck`: strict TypeScript check.
-- `npm test`: headless tests. A bot plays the whole Moon to lift-off and must finish; save/load and backpack/drop/robot-upgrade checks run too. It prints a timeline that shows how long each stage takes.
+- `npm test`: headless tests. A bot plays every planet in order (Moon, then Mars) to lift-off and must finish each; save/load (including saves from 1.1), backpack/drop and robot-upgrade checks run too. It prints a timeline per planet that shows how long each stage takes.
 - `npm run build`: production build to `dist/crazygames/index.html` (upload build with the CrazyGames SDK) and `dist/starhop.html` (body-only preview).
 - `npm run package`: build and zip `dist/starhop-crazygames.zip` for the CrazyGames developer portal.
 - `npm run check`: typecheck, then tests, then build. Run this before calling a change done.
@@ -20,23 +20,29 @@ The simulation is pure TypeScript with no Three.js and no DOM. Rendering, UI and
 
 ```
 src/
-  config.ts           every tunable number: items, prices, speeds, upgrade costs, robot upgrades, meteors
-  planets/types.ts    PlanetDef: layout, deposits, machines, unlock pads, objectives
+  config.ts           every tunable number: items, prices, speeds, upgrade costs, robot upgrades, meteors, storms
+  planets/types.ts    PlanetDef: layout, deposits, machines, unlock pads, objectives, hazards, scenery, route card
+  planets/index.ts    PLANETS in travel order, UPCOMING route cards, nextPlanet()
   planets/moon.ts     the Moon's layout, costs, rocket parts and mission list
+  planets/mars.ts     Mars: copper, dry ice, wire mill, fuel synthesizer, two-input engine works
   sim/                pure game logic, unit-testable in Node
     state.ts          GameState and createState()
     step.ts           step(state, input, dt) → SimEvent[]; runs every system in order
     economy.ts        mining, selling, machine input/output, pay pads, workshop upgrades
     inventory.ts      backpack counts, dropping items into piles, picking piles back up, robot upgrades
     robots.ts         robot AI: find deposit → mine → carry to the machine → unload
-    hazards.ts        oxygen and meteors
+    hazards.ts        oxygen, meteors and dust storms (calm → warning → raging)
+    travel.ts         startNextPlanet(): new planet state carrying credits and upgrades
     movement.ts       player movement and collisions (circles, ridge walls, map bounds)
-    save.ts           toSave/fromSave; fromSave validates untrusted JSON
+    save.ts           toSave/fromSave/restoreGame; validates untrusted JSON, picks the planet from planetId
     events.ts         SimEvent union, the only channel from sim to view/audio
   view/               Three.js rendering
     world.ts          builds the scene and syncs it from state every frame
     terrain.ts        heightAt(), the levelled ground under buildings, ridge, rocks, stars
-    machines.ts       smelter and purifier models with update() animations
+    machines.ts       shared machine parts plus the Moon's smelter and purifier models
+    marsMachines.ts   wire mill, fuel synthesizer and engine works models
+    machineViews.ts   machine models, input/output pads and trays, picked by MachineDef.model
+    storm.ts          dust-storm fog and blowing grains
     merchant.ts       Zix the alien trader and his stall
     characters.ts     astronaut, robot rover, hand-held laser drill
     actors.ts         per-frame player/robot animation, drill beams
@@ -50,7 +56,8 @@ src/
   tutorial.ts         7-step first-play tutorial and one-off tips
   panels.ts           which upgrade panel to show, and buying from it
   platform.ts         CrazyGames SDK wrapper (no-ops without the SDK): gameplay start/stop, midgame and rewarded ads, save storage
-  main.ts             boot, menus, settings (mute, intro seen, tutorial done, tips seen)
+  main.ts             boot, menus, settings, travelling to the next planet (disposes the old game, builds the new one)
+  screens.ts          start-screen route row and end-screen text
 test/
   bot.ts              autopilot that follows the mission list like a player
   autoplay.ts         plays the Moon to the end and prints the timeline
@@ -61,10 +68,10 @@ test/
 
 ## How to change things
 
-- **Balance (prices, speeds, costs):** edit `src/config.ts` and the costs and rocket parts in `src/planets/moon.ts`. Then run `npm test`. The Moon should take the bot roughly 1,300–1,500 s, which comes out at about 25–30 minutes for a person.
+- **Balance (prices, speeds, costs):** edit `src/config.ts` and the costs and rocket parts in the planet files. Then run `npm test`. The Moon should take the bot roughly 1,300–1,500 s (about 25–30 minutes for a person) and Mars roughly 1,700–1,900 s (about 30–35 minutes).
 - **New item:** add it to `ITEM_IDS` and `ITEMS` in `config.ts`, give it a look in `view/items.ts`, and add it to `INGREDIENT`-style swatches in the CSS if needed.
-- **New machine:** add a `MachineDef` and a `machine` unlock to the planet, then a model with `update()` in `view/machines.ts`, and pick it in `world.ts`.
-- **New planet:** create `planets/mars.ts` with a `PlanetDef`. `main.ts` currently loads `MOON` only; travelling between planets (keeping upgrades, switching the PlanetDef) is the next feature to build.
+- **New machine:** add a `MachineDef` (with a `model` id, and `secondInput` if it takes two items) and a `machine` unlock to the planet, then a model with `update()` and register it in `MODELS` in `view/machineViews.ts`. Robots only feed a machine's first input.
+- **New planet:** create `planets/<name>.ts` with a `PlanetDef` (layout, scenery, hazards, arrival captions, route card) and add it to `PLANETS` in `planets/index.ts`; remove its card from `UPCOMING`. Travel, saving and the start screen pick it up automatically. Mirror an existing layout so the bot's ridge-gap waypoint at x = 0 still works, then run `npm test` and tune costs until the new planet takes the bot about 1.2–1.3× as long as the previous one.
 - **Missions:** the `objectives` array in the planet file drives the mission card and the green guide arrow.
 - **Saves:** add new fields to `SaveData` in `sim/save.ts` and validate them in `fromSave`. Bump `SAVE_VERSION` when the meaning changes.
 

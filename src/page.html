@@ -36,7 +36,7 @@
   .chip { padding: 8px 12px; display: grid; gap: 4px; }
   .chip-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
   .chip-label { font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
-  .chip-value { font-family: var(--font-display); font-weight: 700; font-size: 18px; font-variant-numeric: tabular-nums; }
+  .chip-value { font-family: var(--font-display); font-weight: 700; font-size: 18px; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .bar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
   .bar > div { height: 100%; transform-origin: left; border-radius: 3px; }
   .credits { display: flex; align-items: center; gap: 8px; padding: 8px 12px; }
@@ -50,6 +50,9 @@
   #oxygen-box.is-low #oxygen-bar { background: var(--red); }
   #oxygen-box.is-low #oxygen { color: var(--red); }
   #oxygen-box.is-refilling .chip-label::after { content: " · refilling"; color: var(--cyan); }
+  #oxygen-box.is-storm:not(.is-low) { border-color: #ff9b5a; }
+  #oxygen-box.is-storm:not(.is-low) #oxygen-bar { background: #ff9b5a; }
+  #oxygen-box.is-storm .chip-label::after { content: " · storm"; color: #ff9b5a; }
 
   .mission { position: absolute; top: var(--top); left: 50%; transform: translateX(-50%); width: min(420px, calc(100% - 2 * 200px)); min-width: 220px; padding: 8px 16px; display: flex; align-items: center; gap: 12px; }
   .mission.is-new { animation: mission-in 400ms ease-out; }
@@ -139,6 +142,8 @@
   .planet { flex: 1; padding: 8px; border-radius: 12px; border: 1px solid var(--line); text-align: center; font-size: 13px; color: var(--muted); }
   .planet strong { display: block; font-family: var(--font-display); font-size: 15px; color: var(--text); }
   .planet.is-current { border-color: var(--cyan); background: rgba(77, 227, 255, 0.08); }
+  .planet.is-done { border-color: rgba(93, 242, 160, 0.5); }
+  .planet.is-done .planet-status { color: #5df2a0; }
   .planet-dot { width: 28px; height: 28px; margin: 0 auto 4px; border-radius: 50%; }
   .primary { min-height: 52px; border: 0; border-radius: 14px; background: linear-gradient(180deg, #6ff0ff, #2fb7c9); color: #04202a; font-family: var(--font-display); font-weight: 700; font-size: 20px; letter-spacing: 0.06em; cursor: pointer; transition: transform 150ms ease-out, filter 150ms ease-out; }
   .primary:hover { filter: brightness(1.08); }
@@ -252,14 +257,10 @@
 
 <section class="screen" id="start-screen" hidden aria-labelledby="start-title">
   <div class="card">
-    <p class="eyebrow">Planet 1 of 3 · The Moon</p>
+    <p class="eyebrow" id="start-eyebrow">Planet 1 of 3 · The Moon</p>
     <h1 id="start-title">STARHOP</h1>
-    <p>Mine the Moon, build machines and load your rocket. When it's ready, fly on to the next world.</p>
-    <div class="planet-row" aria-label="Your route">
-      <div class="planet is-current"><div class="planet-dot" style="background: radial-gradient(circle at 35% 35%, #d9dbe6, #6f7180)"></div><strong>Moon</strong>Iron · Ice</div>
-      <div class="planet"><div class="planet-dot" style="background: radial-gradient(circle at 35% 35%, #ff9b6a, #8a3a22)"></div><strong>Mars</strong>Coming soon</div>
-      <div class="planet"><div class="planet-dot" style="background: radial-gradient(circle at 35% 35%, #c8f0ff, #5a6fd0)"></div><strong>Ice moon</strong>Coming soon</div>
-    </div>
+    <p id="start-text">Mine the Moon, build machines and load your rocket. When it's ready, fly on to the next world.</p>
+    <div class="planet-row" id="planet-row" aria-label="Your route"></div>
     <p class="hint" id="controls-hint"></p>
     <button class="primary" id="start-button" type="button">Start mission</button>
     <button class="secondary" id="reset-button" type="button" hidden>New game</button>
@@ -276,11 +277,11 @@
 
 <section class="screen" id="complete-screen" hidden aria-labelledby="complete-title">
   <div class="card">
-    <p class="eyebrow">Moon complete</p>
+    <p class="eyebrow" id="complete-eyebrow">Moon complete</p>
     <h2 id="complete-title">Lift-off!</h2>
-    <p>Your rocket is on its way to Mars. The next planet lands in the next update.</p>
+    <p id="complete-text">Your rocket is on its way. The next planet lands in the next update.</p>
     <p class="hint" id="complete-stats"></p>
-    <button class="primary" id="replay-button" type="button">Play the Moon again</button>
+    <button class="primary" id="replay-button" type="button">Start over from the Moon</button>
   </div>
 </section>
 

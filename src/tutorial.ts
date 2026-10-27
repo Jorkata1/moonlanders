@@ -103,6 +103,7 @@ export function createTutorial(touch: boolean, startStep: number): Tutorial {
 export const TIPS = {
   meteor: { step: "Watch out", title: "Meteor incoming!", text: "A red circle shows where it will hit. Step out of it. It leaves a chunk of iron you can mine.", button: "Got it" },
   workshop: { step: "Workshop", title: "Upgrade yourself", text: "Faster boots, a bigger backpack, a stronger drill and more air. Pick from the list.", button: "Got it" },
+  storm: { step: "Watch out", title: "Dust storm coming!", text: "Storms slow you down and burn your air twice as fast outside the dome. Wait it out inside, or keep working if your tank is full.", button: "Got it" },
   robot: { step: "Robots", title: "Your robot is working", text: "It mines and feeds its machine on its own. Stand on its dock to upgrade speed, cargo and drill.", button: "Got it" },
 } satisfies Record<string, CoachCard>;
 

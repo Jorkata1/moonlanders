@@ -1,7 +1,7 @@
-import { METEOR, OXYGEN, PLAYER, oxygenFor } from "../config";
+import { METEOR, OXYGEN, PLAYER, STORM, oxygenFor } from "../config";
 import type { Point } from "../planets/types";
 import type { Emit } from "./events";
-import { distance, type GameState } from "./state";
+import { distance, isStormRaging, type GameState } from "./state";
 
 export type Random = () => number;
 
@@ -28,7 +28,8 @@ export function updateOxygen(state: GameState, dt: number, emit: Emit): void {
     return;
   }
   const before = player.oxygen;
-  player.oxygen = Math.max(0, player.oxygen - dt);
+  const drain = isStormRaging(state) ? STORM.oxygenDrainMultiplier : 1;
+  player.oxygen = Math.max(0, player.oxygen - dt * drain);
   const lowLine = max * OXYGEN.lowRatio;
   if (before > lowLine && player.oxygen <= lowLine) emit({ type: "oxygenLow" });
   if (player.oxygen > 0 || before <= 0) return;
@@ -56,7 +57,8 @@ function nextInterval(random: Random): number {
 }
 
 export function updateMeteors(state: GameState, dt: number, emit: Emit, random: Random): void {
-  if (!state.unlocked.has(state.planet.meteorsAfter)) {
+  const meteors = state.planet.meteors;
+  if (!meteors || !state.unlocked.has(meteors.after)) {
     state.meteorTimer = METEOR.firstDelaySeconds;
     return;
   }
@@ -83,10 +85,10 @@ export function updateMeteors(state: GameState, dt: number, emit: Emit, random: 
       player.carry.splice(player.carry.length - itemsLost, itemsLost);
       player.stunned = PLAYER.knockdownSeconds;
     }
-    // The meteor leaves a chunk of iron behind: danger with a reward.
+    // The meteor leaves a chunk of ore behind: danger with a reward.
     state.deposits.push({
       id: `meteor-${meteor.id}`,
-      item: "ironOre",
+      item: meteors.reward,
       zone: null,
       x: meteor.x,
       z: meteor.z,
@@ -99,4 +101,33 @@ export function updateMeteors(state: GameState, dt: number, emit: Emit, random: 
     emit({ type: "meteorImpact", id: meteor.id, at: meteor, hitPlayer, itemsLost });
   }
   state.meteors = state.meteors.filter((m) => m.warning > 0);
+}
+
+/** Calm → warning → raging → calm. Storms only start once the planet's trigger unlock is bought. */
+export function updateStorm(state: GameState, dt: number, emit: Emit, random: Random): void {
+  const storms = state.planet.storms;
+  const storm = state.storm;
+  if (!storms || !state.unlocked.has(storms.after)) {
+    storm.phase = "calm";
+    storm.timer = STORM.firstDelaySeconds;
+    return;
+  }
+  storm.timer -= dt;
+  if (storm.timer > 0) return;
+  switch (storm.phase) {
+    case "calm":
+      storm.phase = "warning";
+      storm.timer = STORM.warningSeconds;
+      emit({ type: "stormWarning", seconds: STORM.warningSeconds });
+      return;
+    case "warning":
+      storm.phase = "raging";
+      storm.timer = STORM.durationSeconds;
+      emit({ type: "stormStart" });
+      return;
+    case "raging":
+      storm.phase = "calm";
+      storm.timer = STORM.minCalmSeconds + random() * (STORM.maxCalmSeconds - STORM.minCalmSeconds);
+      emit({ type: "stormEnd" });
+  }
 }

@@ -23,11 +23,16 @@ const veinGeometry = new OctahedronGeometry(0.16, 0);
 const crystalGeometry = new CylinderGeometry(0.2, 0.26, 1, 6);
 const iceBaseGeometry = new DodecahedronGeometry(0.5, 0);
 
-function oreNode(random: () => number, pieces: number): DepositModel {
+/** Colour of the rock chips that fly off a deposit of this item while it is drilled. */
+export function chipColor(item: ItemId): number {
+  return ITEMS[item].shape === "ice" ? 0xbfefff : 0x4a4550;
+}
+
+function oreNode(random: () => number, pieces: number, veinColor: number): DepositModel {
   const root = new Group();
   const parts: Mesh[] = [];
   const stone = flat(0x55505c, 0.95);
-  const vein = glow(ITEMS.ironOre.color, 1.6);
+  const vein = glow(veinColor, 1.6);
   for (let i = 0; i < pieces; i += 1) {
     const angle = (i / pieces) * Math.PI * 2 + random() * 0.6;
     const reach = i === 0 ? 0 : 0.38 + random() * 0.18;
@@ -47,10 +52,13 @@ function oreNode(random: () => number, pieces: number): DepositModel {
   return { root, pieces: parts, rubble: rubble(stone) };
 }
 
-function iceNode(random: () => number, pieces: number): DepositModel {
+/** Inner glow of icy deposits, picked by eye per item. */
+const ICE_GLOW: Partial<Record<ItemId, number>> = { ice: 0x2a9ad0, dryIce: 0x6f7fe0 };
+
+function iceNode(random: () => number, pieces: number, item: ItemId, color: number): DepositModel {
   const root = new Group();
   const parts: Mesh[] = [];
-  const ice = surface({ color: ITEMS.ice.color, roughness: 0.06, metalness: 0.1, emissive: 0x2a9ad0, emissiveIntensity: 0.5, flat: true, reflective: true, envMapIntensity: 1.4 });
+  const ice = surface({ color, roughness: 0.06, metalness: 0.1, emissive: ICE_GLOW[item] ?? color, emissiveIntensity: 0.5, flat: true, reflective: true, envMapIntensity: 1.4 });
   for (let i = 0; i < pieces; i += 1) {
     const angle = (i / pieces) * Math.PI * 2 + random() * 0.5;
     const reach = i === 0 ? 0 : 0.25 + random() * 0.2;
@@ -80,7 +88,8 @@ function rubble(material: ReturnType<typeof flat>): Group {
 
 export function depositModel(item: ItemId, seed: number, pieces = 5): DepositModel {
   const random = seeded(seed);
-  const model = item === "ice" ? iceNode(random, pieces) : oreNode(random, pieces);
+  const { shape, color } = ITEMS[item];
+  const model = shape === "ice" ? iceNode(random, pieces, item, color) : oreNode(random, pieces, color);
   model.root.add(model.rubble);
   model.root.traverse((object) => {
     if (object instanceof Mesh) {

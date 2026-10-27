@@ -1,5 +1,5 @@
 import { CatmullRomCurve3, CylinderGeometry, Group, Mesh, SphereGeometry, TubeGeometry, Vector3, type MeshStandardMaterial } from "three";
-import type { PlanetDef, Point } from "../planets/types";
+import type { DecorDef, DecorKind, PlanetDef, Point } from "../planets/types";
 import { LOOK, box, glow, mesh, surface } from "./materials";
 import { heightAt } from "./terrain";
 import { panelTexture } from "./textures";
@@ -75,22 +75,32 @@ function place(root: Group, planet: PlanetDef, object: Group | Mesh, x: number, 
   root.add(object);
 }
 
+const BUILDERS: Record<Exclude<DecorKind, "solarFarm">, () => Group> = {
+  antenna,
+  crates: crateStack,
+  flag,
+  fuelTanks,
+};
+
+function placeDecor(root: Group, planet: PlanetDef, decor: DecorDef): void {
+  if (decor.kind !== "solarFarm") {
+    place(root, planet, BUILDERS[decor.kind](), decor.x, decor.z, decor.rotation);
+    return;
+  }
+  for (let row = 0; row < 2; row += 1) {
+    for (let col = 0; col < 3; col += 1) place(root, planet, solarPanel(), decor.x + col * 1.8, decor.z - row * 1.6);
+  }
+}
+
 export function buildDecor(planet: PlanetDef): DecorView {
   const root = new Group();
-  for (let row = 0; row < 2; row += 1) {
-    for (let col = 0; col < 3; col += 1) place(root, planet, solarPanel(), -11.6 + col * 1.8, 2.2 - row * 1.6);
-  }
-  place(root, planet, antenna(), -2.8, 7.6, 0.6);
-  place(root, planet, crateStack(), 2.6, 6.7, -0.3);
-  place(root, planet, flag(), 4.6, 4.2);
-  place(root, planet, fuelTanks(), -11.6, -17.5, 0.4);
-  place(root, planet, crateStack(), 11.2, -12.4, 1.2);
-  root.add(cable(planet, { x: 2.6, z: 0.4 }, { x: 4.8, z: -3.3 }));
-  root.add(cable(planet, { x: -3.3, z: 3.9 }, { x: -8.8, z: 3.1 }));
+  const { scenery } = planet;
+  for (const decor of scenery.decor) placeDecor(root, planet, decor);
+  for (const [from, to] of scenery.cables) root.add(cable(planet, from, to));
 
   // Blinking beacons line the way through the ridge.
   const beaconMaterial = glow(0x4de3ff, 2.5).clone() as MeshStandardMaterial;
-  for (const z of [-6.5, -12.6, -15]) {
+  for (const z of scenery.beaconRows) {
     for (const x of [-2.2, 2.2]) {
       const post = new Group();
       post.add(mesh(new CylinderGeometry(0.05, 0.07, 0.6, 8), LOOK.dark(), 0, 0.3, 0));

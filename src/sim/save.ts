@@ -1,4 +1,5 @@
 import { ITEM_IDS, MACHINE, ROBOT_UPGRADES, ROBOT_UPGRADE_IDS, UPGRADES, UPGRADE_IDS, oxygenFor, type ItemId, type RobotUpgradeId, type UpgradeId } from "../config";
+import { PLANETS, planetById } from "../planets";
 import type { PlanetDef } from "../planets/types";
 import { createState, type GameState } from "./state";
 
@@ -14,7 +15,7 @@ export interface SaveData {
   upgrades: Record<UpgradeId, number>;
   robotUpgrades: Record<string, Record<RobotUpgradeId, number>>;
   rocket: Record<ItemId, number>;
-  machines: Record<string, { input: number; output: number; processed: number }>;
+  machines: Record<string, { input: number; secondInput: number; output: number; processed: number }>;
   mined: Record<ItemId, number>;
   earned: number;
   objectiveIndex: number;
@@ -31,7 +32,7 @@ export function toSave(state: GameState): SaveData {
     upgrades: { ...state.upgrades },
     robotUpgrades: JSON.parse(JSON.stringify(state.robotUpgrades)) as Record<string, Record<RobotUpgradeId, number>>,
     rocket: { ...state.rocket },
-    machines: Object.fromEntries([...state.machines.values()].map((m) => [m.id, { input: m.input, output: m.output, processed: m.processed }])),
+    machines: Object.fromEntries([...state.machines.values()].map((m) => [m.id, { input: m.input, secondInput: m.secondInput, output: m.output, processed: m.processed }])),
     mined: { ...state.stats.mined },
     earned: state.stats.earned,
     objectiveIndex: state.objectiveIndex,
@@ -77,6 +78,7 @@ export function fromSave(planet: PlanetDef, raw: unknown): GameState {
   for (const machine of state.machines.values()) {
     const saved = record(machines[machine.id]);
     machine.input = count(saved.input, MACHINE.inputCapacity);
+    machine.secondInput = count(saved.secondInput, MACHINE.inputCapacity);
     machine.output = count(saved.output, MACHINE.outputCapacity);
     machine.processed = count(saved.processed);
   }
@@ -85,4 +87,11 @@ export function fromSave(planet: PlanetDef, raw: unknown): GameState {
   state.launched = data.launched === true;
   state.player.oxygen = oxygenFor(state.upgrades.oxygen);
   return state;
+}
+
+/** Rebuild a game on whichever planet the save was made, falling back to the first planet. */
+export function restoreGame(raw: unknown): GameState {
+  const planet = planetById(record(raw).planetId) ?? PLANETS[0];
+  if (!planet) throw new Error("No planets defined");
+  return fromSave(planet, raw);
 }

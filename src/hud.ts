@@ -1,7 +1,8 @@
 import { BOOST, ITEMS, OXYGEN, oxygenFor, type ItemId } from "./config";
 import { carryCapacity } from "./sim/economy";
 import { carriedCounts } from "./sim/inventory";
-import type { GameState } from "./sim/state";
+import { isInsideDome } from "./sim/hazards";
+import { isStormRaging, type GameState } from "./sim/state";
 
 const TOAST_MS = 2600;
 
@@ -167,11 +168,12 @@ export function createHud(): Hud {
       oxygen.textContent = `${Math.ceil(state.player.oxygen)} s`;
       oxygenBar.style.transform = `scaleX(${state.player.oxygen / max})`;
       oxygenBox.classList.toggle("is-low", state.player.oxygen <= max * OXYGEN.lowRatio);
+      oxygenBox.classList.toggle("is-storm", isStormRaging(state) && !isInsideDome(state, state.player));
       oxygenBox.classList.toggle("is-refilling", state.player.oxygen < max && Math.hypot(state.player.x - state.planet.dome.x, state.player.z - state.planet.dome.z) <= state.planet.dome.radius);
       if (state.objectiveIndex !== lastObjective) {
         lastObjective = state.objectiveIndex;
         const current = state.planet.objectives[state.objectiveIndex];
-        objective.textContent = current ? current.text : "Moon complete!";
+        objective.textContent = current ? current.text : `${state.planet.name} complete!`;
         objectiveStep.textContent = `${Math.min(state.objectiveIndex + 1, state.planet.objectives.length)}/${state.planet.objectives.length}`;
         const card = objective.parentElement;
         card?.classList.remove("is-new");

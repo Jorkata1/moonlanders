@@ -16,11 +16,9 @@ export interface IntroCue {
 const DURATION = 12;
 const TOUCHDOWN = 7.6;
 const DROP_HEIGHT = 34;
-const CUES: IntroCue[] = [
-  { at: 0.4, caption: "Year 2187. Your scout pod is running on fumes." },
-  { at: 3.8, caption: "The only way home is forward: rebuild a rocket and hop from world to world." },
-  { at: 8.2, caption: "First stop, the Moon. Mine it, build on it, and get off this rock, pioneer." },
-];
+/** When each of the planet's arrival captions appears, in seconds. */
+const CAPTION_TIMES: readonly number[] = [0.4, 3.8, 8.2];
+const LAST_CAPTION_AT = 8.2;
 
 export interface Intro {
   /** Advance the intro; returns the camera shot, or null once it has finished. */
@@ -38,8 +36,9 @@ function ease(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
 }
 
-/** Scripted opening: the pod falls out of the stars and lands inside the dome. */
-export function createIntro(lander: LanderModel, pad: Point, groundY: number, gameplayOffset: Vector3): Intro {
+/** Scripted arrival: the pod falls out of the sky and lands inside the dome. */
+export function createIntro(lander: LanderModel, pad: Point, groundY: number, gameplayOffset: Vector3, captions: readonly string[]): Intro {
+  const cues: IntroCue[] = captions.map((caption, index) => ({ at: CAPTION_TIMES[index] ?? LAST_CAPTION_AT, caption }));
   let time = 0;
   let touchedDown = false;
   let touchdownHandler: () => void = () => undefined;
@@ -87,7 +86,7 @@ export function createIntro(lander: LanderModel, pad: Point, groundY: number, ga
     },
     caption() {
       let current: string | null = null;
-      for (const cue of CUES) if (time >= cue.at) current = cue.caption;
+      for (const cue of cues) if (time >= cue.at) current = cue.caption;
       return time >= DURATION - 0.6 ? null : current;
     },
     landed: () => touchedDown,

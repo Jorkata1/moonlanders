@@ -6,6 +6,7 @@ import {
   Group,
   Mesh,
   MeshBasicMaterial,
+  NormalBlending,
   RingGeometry,
   SRGBColorSpace,
   Sprite,
@@ -119,7 +120,7 @@ export function createEffects(scene: Scene, pool: ItemPool): Effects {
   const trailMaterial = new MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: 0.55, blending: AdditiveBlending, depthWrite: false });
 
   function spawnPuff(at: Vector3, color: number, velocity: Vector3, life: number, size: number, grow: number, additive: boolean): void {
-    const material = new SpriteMaterial({ map: puffMap, color, transparent: true, depthWrite: false, blending: additive ? AdditiveBlending : undefined });
+    const material = new SpriteMaterial({ map: puffMap, color, transparent: true, depthWrite: false, blending: additive ? AdditiveBlending : NormalBlending });
     const sprite = new Sprite(material);
     sprite.position.copy(at);
     sprite.scale.setScalar(size);

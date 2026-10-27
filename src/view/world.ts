@@ -1,38 +1,30 @@
-import { Color, DirectionalLight, FogExp2, Group, HemisphereLight, Vector3, type Object3D, type Scene } from "three";
-import { ITEMS, MACHINE, PADS, type ItemId } from "../config";
+import { DirectionalLight, Group, HemisphereLight, Vector3, type Object3D, type Scene } from "three";
+import { ITEMS, PADS, type ItemId } from "../config";
 import type { PlanetDef, Point } from "../planets/types";
 import { isPadAvailable } from "../sim/economy";
 import { distance, rocketComplete, type GameState } from "../sim/state";
 import { bakeStatic } from "./bake";
 import { buildDecor } from "./decor";
 import { depositModel, syncDeposit, type DepositModel } from "./deposits";
-import { StackView, type ItemPool } from "./items";
-import { purifierModel, smelterModel, type MachineModel } from "./machines";
+import type { ItemPool } from "./items";
+import { createMachineViews } from "./machineViews";
 import { createGuide, createPilesView } from "./markers";
 import { merchantModel, type MerchantModel } from "./merchant";
 import { createPad, type PadView } from "./pads";
+import { createStormView, type StormView } from "./storm";
 import { domeModel, rocketModel, workshopModel, type RocketModel } from "./structures";
 import { buildTerrain, heightAt } from "./terrain";
 
 const SHADOW_EXTENT = 16;
 const SUN_OFFSET = new Vector3(-9, 18, 7);
 const POP_SECONDS = 0.6;
-const MAX_TRAY_ITEMS = 8;
-const NEAR_LABEL_DISTANCE = 6.5;
-
-interface MachineView {
-  model: MachineModel;
-  input: PadView;
-  output: PadView;
-  inputStack: StackView;
-  outputStack: StackView;
-}
 
 export interface WorldView {
   sync(state: GameState, dt: number, time: number): void;
   celebrateUnlock(id: string): void;
   rocket: RocketModel;
   merchant: MerchantModel;
+  storm: StormView;
   groundAt(point: Point): Vector3;
   /** Where the player stands to open a robot's upgrade panel. */
   robotDock(id: string): Point | null;
@@ -43,8 +35,6 @@ function place(object: Object3D, planet: PlanetDef, point: Point, lift = 0): voi
 }
 
 function lights(scene: Scene, planet: PlanetDef, shadowMapSize: number): DirectionalLight {
-  scene.background = new Color(planet.palette.sky);
-  scene.fog = new FogExp2(planet.palette.fog, 0.016);
   scene.add(new HemisphereLight(planet.palette.hemiSky, planet.palette.hemiGround, 0.7));
   const sun = new DirectionalLight(planet.palette.sun, 2.4);
   sun.castShadow = shadowMapSize > 0;
@@ -67,7 +57,7 @@ export function buildWorld(scene: Scene, state: GameState, pool: ItemPool, shado
     { x: planet.rocket.x, z: planet.rocket.z, radius: 3.2 },
     { ...planet.rocket.pad, radius: 1.8 },
     ...planet.deposits.map((d) => ({ ...d, radius: 1.4 })),
-    ...planet.machines.flatMap((m) => [{ ...m, radius: 2.6 }, { ...m.inputPad, radius: 1.6 }, { ...m.outputPad, radius: 1.6 }]),
+    ...planet.machines.flatMap((m) => [{ ...m, radius: 2.6 }, { ...m.inputPad, radius: 1.6 }, { ...m.outputPad, radius: 1.6 }, ...(m.secondInput ? [{ ...m.secondInput.pad, radius: 1.6 }] : [])]),
     ...planet.unlocks.map((u) => ({ ...u, radius: 1.8 })),
     { x: 0, z: planet.ridge.z, radius: 4 },
   ];
@@ -100,18 +90,8 @@ export function buildWorld(scene: Scene, state: GameState, pool: ItemPool, shado
   place(workshopPad.root, planet, workshopSpot);
   scene.add(workshop, workshopPad.root);
 
-  const machines = new Map<string, MachineView>();
-  for (const def of planet.machines) {
-    const model = def.input === "ice" ? purifierModel() : smelterModel();
-    place(model.root, planet, def);
-    bakeStatic(model.root);
-    const input = createPad("input", 0.95, 1.5);
-    place(input.root, planet, def.inputPad);
-    const output = createPad("output", 0.95, 1.5);
-    place(output.root, planet, def.outputPad);
-    scene.add(model.root, input.root, output.root);
-    machines.set(def.id, { model, input, output, inputStack: new StackView(model.inputTray, pool, 3, 0.26), outputStack: new StackView(model.outputTray, pool, 3, 0.3) });
-  }
+  const machines = createMachineViews(scene, planet, pool, (object, point) => place(object, planet, point));
+  const storm = createStormView(scene, planet);
 
   const rocket = rocketModel();
   place(rocket.root, planet, planet.rocket);
@@ -142,27 +122,6 @@ export function buildWorld(scene: Scene, state: GameState, pool: ItemPool, shado
   let ridgeSink = state.unlocked.has(planet.ridge.unlockId) ? 1 : 0;
   let ridgeSinking = false;
   const playerPosition = new Vector3();
-
-  function syncMachines(time: number, dt: number): void {
-    for (const def of planet.machines) {
-      const view = machines.get(def.id);
-      const machine = state.machines.get(def.id);
-      if (!view || !machine) continue;
-      const built = state.unlocked.has(def.id);
-      for (const object of [view.model.root, view.input.root, view.output.root]) object.visible = built;
-      if (!built) continue;
-      view.model.update(time, dt, machine.progress !== null, machine.progress ?? 0);
-      view.inputStack.sync(new Array<ItemId>(Math.min(machine.input, MAX_TRAY_ITEMS)).fill(def.input), time, 0);
-      view.outputStack.sync(new Array<ItemId>(Math.min(machine.output, MAX_TRAY_ITEMS)).fill(def.output), time, 0);
-      view.input.label.set(`${ITEMS[def.input].name.toUpperCase()} IN`, `${machine.input}/${MACHINE.inputCapacity}`, machine.input >= MACHINE.inputCapacity ? "warning" : "neutral");
-      view.output.label.set(ITEMS[def.output].plural.toUpperCase(), `${machine.output} ready`, machine.output > 0 ? "ready" : "neutral");
-      view.input.setActive(distance(state.player, def.inputPad) <= PADS.radius, time);
-      view.output.setActive(distance(state.player, def.outputPad) <= PADS.radius, time);
-      const near = distance(state.player, def) < NEAR_LABEL_DISTANCE;
-      view.input.label.sprite.visible = near;
-      view.output.label.sprite.visible = near || machine.output >= MACHINE.outputCapacity;
-    }
-  }
 
   function syncRocket(time: number): void {
     rocketPad.root.visible = state.unlocked.has(planet.ridge.unlockId);
@@ -228,6 +187,7 @@ export function buildWorld(scene: Scene, state: GameState, pool: ItemPool, shado
   return {
     rocket,
     merchant,
+    storm,
     groundAt(point) {
       return new Vector3(point.x, heightAt(planet, point.x, point.z), point.z);
     },
@@ -237,12 +197,13 @@ export function buildWorld(scene: Scene, state: GameState, pool: ItemPool, shado
     },
     celebrateUnlock(id) {
       if (id === planet.ridge.unlockId) ridgeSinking = true;
-      const machine = machines.get(id);
-      if (machine) pops.push({ object: machine.model.root, t: 0 });
+      const model = machines.modelOf(id);
+      if (model) pops.push({ object: model, t: 0 });
       if (id === "workshop") pops.push({ object: workshop, t: 0 });
     },
     sync(_state, dt, time) {
-      syncMachines(time, dt);
+      machines.sync(state, time, dt);
+      storm.sync(state, dt, time);
       syncRocket(time);
       syncPads(time);
       syncDeposits(time);

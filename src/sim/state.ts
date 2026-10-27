@@ -1,4 +1,4 @@
-import { DEPOSIT, ITEM_IDS, ROBOT_UPGRADE_IDS, UPGRADE_IDS, oxygenFor, type ItemId, type RobotUpgradeId, type UpgradeId } from "../config";
+import { DEPOSIT, ITEM_IDS, STORM, ROBOT_UPGRADE_IDS, UPGRADE_IDS, oxygenFor, type ItemId, type RobotUpgradeId, type UpgradeId } from "../config";
 import type { PlanetDef, Point } from "../planets/types";
 
 export interface PlayerState {
@@ -30,6 +30,8 @@ export interface DepositState extends Point {
 export interface MachineState {
   readonly id: string;
   input: number;
+  /** Stock of the machine's second input; always 0 for single-input machines. */
+  secondInput: number;
   output: number;
   /** 0..1 progress on the item being processed; null when idle. */
   progress: number | null;
@@ -65,6 +67,14 @@ export interface MeteorState {
   warning: number;
 }
 
+export type StormPhase = "calm" | "warning" | "raging";
+
+export interface StormState {
+  phase: StormPhase;
+  /** Seconds until the next phase change. */
+  timer: number;
+}
+
 export interface Stats {
   mined: Record<ItemId, number>;
   earned: number;
@@ -88,6 +98,7 @@ export interface GameState {
   meteors: MeteorState[];
   meteorTimer: number;
   nextMeteorId: number;
+  storm: StormState;
   stats: Stats;
   objectiveIndex: number;
   boostSeconds: number;
@@ -118,7 +129,7 @@ export function createState(planet: PlanetDef): GameState {
     upgrades: zeroUpgrades(),
     player: { x: planet.spawn.x, z: planet.spawn.z, heading: Math.PI, moving: false, carry: [], oxygen: oxygenFor(0), mineTimer: 0, transferTimer: 0, stunned: 0, miningTarget: null },
     deposits: planet.deposits.map((d) => ({ ...d, amount: DEPOSIT.amount, maxAmount: DEPOSIT.amount, regrowTimer: 0, temporary: false, lifetime: Infinity })),
-    machines: new Map(planet.machines.map((m) => [m.id, { id: m.id, input: 0, output: 0, progress: null, processed: 0 }])),
+    machines: new Map(planet.machines.map((m) => [m.id, { id: m.id, input: 0, secondInput: 0, output: 0, progress: null, processed: 0 }])),
     robots: [],
     robotUpgrades: Object.fromEntries(planet.unlocks.filter((u) => u.kind === "robot").map((u) => [u.id, zeroRobotUpgrades()])),
     piles: [],
@@ -127,6 +138,7 @@ export function createState(planet: PlanetDef): GameState {
     meteors: [],
     meteorTimer: 0,
     nextMeteorId: 1,
+    storm: { phase: "calm", timer: STORM.firstDelaySeconds },
     stats: { mined: zeroItems(), earned: 0 },
     objectiveIndex: 0,
     boostSeconds: 0,
@@ -142,6 +154,11 @@ export function isAvailable(state: GameState, zone: string | null): boolean {
 
 export function distance(a: Point, b: Point): number {
   return Math.hypot(a.x - b.x, a.z - b.z);
+}
+
+/** True while a dust storm is blowing; the player is only affected outside the dome. */
+export function isStormRaging(state: GameState): boolean {
+  return state.storm.phase === "raging";
 }
 
 export function rocketComplete(state: GameState): boolean {

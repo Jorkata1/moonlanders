@@ -1,12 +1,14 @@
 import { createAudio } from "./audio";
-import { createGame } from "./game";
+import { createGame, type Game } from "./game";
 import { createHud } from "./hud";
 import { createMoveControls } from "./input";
-import { MOON } from "./planets/moon";
+import { PLANETS } from "./planets";
 import { celebrate, initPlatform, readSave, showRewardedAd, signalLoadingFinished, startGameplay, stopGameplay, writeSave } from "./platform";
 import { detectQuality } from "./quality";
-import { fromSave, toSave } from "./sim/save";
+import { completeText, renderRoute, startEyebrow, startText, totalMined } from "./screens";
+import { restoreGame, toSave } from "./sim/save";
 import { createState, type GameState } from "./sim/state";
+import { startNextPlanet } from "./sim/travel";
 
 const SAVE_KEY = "starhop.save.v1";
 const SETTINGS_KEY = "starhop.settings.v1";
@@ -15,7 +17,10 @@ type Phase = "menu" | "playing" | "paused" | "complete";
 
 interface Settings {
   muted: boolean;
+  /** The Moon's opening cinematic has been watched. */
   introSeen: boolean;
+  /** Planets (other than the Moon) whose arrival cinematic has been watched. */
+  arrivals: string[];
   tutorialDone: boolean;
   tips: string[];
 }
@@ -26,34 +31,45 @@ function requireElement<T extends HTMLElement>(id: string): T {
   return element as T;
 }
 
+function firstPlanetState(): GameState {
+  const first = PLANETS[0];
+  if (!first) throw new Error("No planets defined");
+  return createState(first);
+}
+
+/** Load the saved game; a save made right after lift-off continues on the next planet. */
 function loadState(): GameState {
   const raw = readSave(SAVE_KEY);
-  if (!raw) return createState(MOON);
+  if (!raw) return firstPlanetState();
   try {
-    return fromSave(MOON, JSON.parse(raw));
+    const state = restoreGame(JSON.parse(raw));
+    return state.launched ? (startNextPlanet(state) ?? state) : state;
   } catch (error) {
     console.error(JSON.stringify({ scope: "save", action: "parse", message: String(error) }));
-    return createState(MOON);
+    return firstPlanetState();
   }
+}
+
+function strings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
 }
 
 function loadSettings(): Settings {
   try {
     const data = JSON.parse(readSave(SETTINGS_KEY) ?? "{}") as Record<string, unknown>;
-    return {
-      muted: data.muted === true,
-      introSeen: data.introSeen === true,
-      tutorialDone: data.tutorialDone === true,
-      tips: Array.isArray(data.tips) ? data.tips.filter((tip): tip is string => typeof tip === "string") : [],
-    };
+    return { muted: data.muted === true, introSeen: data.introSeen === true, arrivals: strings(data.arrivals), tutorialDone: data.tutorialDone === true, tips: strings(data.tips) };
   } catch (error) {
     console.error(JSON.stringify({ scope: "settings", action: "parse", message: String(error) }));
-    return { muted: false, introSeen: false, tutorialDone: false, tips: [] };
+    return { muted: false, introSeen: false, arrivals: [], tutorialDone: false, tips: [] };
   }
 }
 
 function hasProgress(state: GameState): boolean {
-  return state.stats.earned > 0 || state.unlocked.size > 0 || state.stats.mined.ironOre > 0;
+  return state.stats.earned > 0 || state.unlocked.size > 0 || totalMined(state) > 0;
+}
+
+function arrivalSeen(settings: Settings, planetId: string): boolean {
+  return planetId === PLANETS[0]?.id ? settings.introSeen : settings.arrivals.includes(planetId);
 }
 
 async function boot(): Promise<void> {
@@ -78,39 +94,69 @@ async function boot(): Promise<void> {
   const save = () => writeSave(SAVE_KEY, JSON.stringify(toSave(state)));
   const saveSettings = () => writeSave(SETTINGS_KEY, JSON.stringify(settings));
 
-  const game = createGame(
-    canvas,
-    state,
-    quality,
-    controls,
-    hud,
-    audio,
-    { playIntro: !settings.introSeen && !hasProgress(state), tutorialDone: settings.tutorialDone, seenTips: new Set(settings.tips), touch: isTouch },
-    {
-      onSave: save,
-      onLaunched: () => {
-        phase = "complete";
-        stopGameplay();
-        celebrate();
-        game.setRunning(false);
-        requireElement("complete-stats").textContent = `${state.stats.earned.toLocaleString("en-US")} credits earned · ${state.stats.mined.ironOre + state.stats.mined.ice} resources mined`;
-        completeScreen.hidden = false;
-        requireElement<HTMLButtonElement>("replay-button").focus();
+  function showComplete(): void {
+    phase = "complete";
+    const text = completeText(state);
+    requireElement("complete-eyebrow").textContent = text.eyebrow;
+    requireElement("complete-text").textContent = text.text;
+    requireElement("complete-stats").textContent = text.stats;
+    completeScreen.hidden = false;
+    requireElement<HTMLButtonElement>("replay-button").focus();
+  }
+
+  /** After lift-off: land on the next planet, or show the end screen if there is none yet. */
+  function travelOn(): void {
+    const next = startNextPlanet(state);
+    if (!next) {
+      stopGameplay();
+      celebrate();
+      game.setRunning(false);
+      showComplete();
+      return;
+    }
+    // Called from inside the old game's frame; swap planets once that frame has finished.
+    queueMicrotask(() => {
+      game.setRunning(false);
+      game.dispose();
+      state = next;
+      save();
+      hud.flash();
+      game = buildGame();
+      game.setRunning(true);
+    });
+  }
+
+  function buildGame(): Game {
+    canvas.setAttribute("aria-label", `Starhop: your astronaut on ${state.planet.phrase}, seen from above`);
+    return createGame(
+      canvas,
+      state,
+      quality,
+      controls,
+      hud,
+      audio,
+      { playIntro: !arrivalSeen(settings, state.planet.id) && !hasProgress(state), tutorialDone: settings.tutorialDone, seenTips: new Set(settings.tips), touch: isTouch },
+      {
+        onSave: save,
+        onLaunched: travelOn,
+        onIntroDone: () => {
+          if (state.planet.id === PLANETS[0]?.id) settings.introSeen = true;
+          else if (!settings.arrivals.includes(state.planet.id)) settings.arrivals.push(state.planet.id);
+          saveSettings();
+        },
+        onTutorialDone: () => {
+          settings.tutorialDone = true;
+          saveSettings();
+        },
+        onTipSeen: (id) => {
+          settings.tips.push(id);
+          saveSettings();
+        },
       },
-      onIntroDone: () => {
-        settings.introSeen = true;
-        saveSettings();
-      },
-      onTutorialDone: () => {
-        settings.tutorialDone = true;
-        saveSettings();
-      },
-      onTipSeen: (id) => {
-        settings.tips.push(id);
-        saveSettings();
-      },
-    },
-  );
+    );
+  }
+
+  let game = buildGame();
 
   function play(): void {
     audio.unlock();
@@ -132,14 +178,18 @@ async function boot(): Promise<void> {
   }
 
   function startOver(): void {
-    state = createState(MOON);
+    state = firstPlanetState();
     save();
     window.location.reload();
   }
 
   function showStart(): void {
-    startButton.textContent = hasProgress(state) ? "Continue" : "Start mission";
-    resetButton.hidden = !hasProgress(state);
+    requireElement("start-eyebrow").textContent = startEyebrow(state.planet);
+    requireElement("start-text").textContent = startText(state.planet);
+    renderRoute(requireElement("planet-row"), state.planet);
+    const progressed = hasProgress(state) || state.planet.id !== PLANETS[0]?.id;
+    startButton.textContent = progressed ? "Continue" : "Start mission";
+    resetButton.hidden = !progressed;
     resetButton.textContent = "New game";
     resetButton.dataset.armed = "false";
     requireElement("controls-hint").textContent = isTouch ? "Drag anywhere to walk. Walk into things to use them." : "WASD or arrow keys to walk (or drag with the mouse). Walk into things to use them. Q drops what's on top of your backpack.";
@@ -197,13 +247,8 @@ async function boot(): Promise<void> {
 
   renderMute();
   game.setRunning(false);
-  if (state.launched) {
-    completeScreen.hidden = false;
-    phase = "complete";
-    requireElement("complete-stats").textContent = `${state.stats.earned.toLocaleString("en-US")} credits earned on the Moon`;
-  } else {
-    showStart();
-  }
+  if (state.launched) showComplete();
+  else showStart();
   signalLoadingFinished();
 }
 

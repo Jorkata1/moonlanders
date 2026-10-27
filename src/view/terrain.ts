@@ -47,20 +47,6 @@ function noise(x: number, z: number): number {
   return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
 }
 
-interface Crater extends Point {
-  radius: number;
-}
-
-/** Decorative craters, kept away from anything the player needs to stand on. */
-const CRATERS: Crater[] = [
-  { x: -9.5, z: 6.5, radius: 2.2 },
-  { x: 3.5, z: 7.5, radius: 1.4 },
-  { x: -12, z: -13.5, radius: 2.4 },
-  { x: 11, z: -25, radius: 2 },
-  { x: -11.5, z: -27, radius: 1.6 },
-  { x: 12.5, z: -9, radius: 1.3 },
-];
-
 function outsideDistance(planet: PlanetDef, x: number, z: number): number {
   const { minX, maxX, minZ, maxZ } = planet.bounds;
   const dx = Math.max(minX - x, 0, x - maxX);
@@ -85,7 +71,7 @@ function flatZones(planet: PlanetDef): FlatZone[] {
     { ...planet.workshop, radius: 2.6 },
     { x: planet.rocket.x, z: planet.rocket.z, radius: 3.2 },
     { ...planet.rocket.pad, radius: 1.9 },
-    ...planet.machines.flatMap((m) => [{ ...m, radius: 2.8 }, { ...m.inputPad, radius: 1.5 }, { ...m.outputPad, radius: 1.5 }]),
+    ...planet.machines.flatMap((m) => [{ ...m, radius: 2.8 }, { ...m.inputPad, radius: 1.5 }, { ...m.outputPad, radius: 1.5 }, ...(m.secondInput ? [{ ...m.secondInput.pad, radius: 1.5 }] : [])]),
     ...planet.unlocks.map((u) => ({ ...u, radius: 1.9 })),
   ];
   flatZoneCache.set(planet, zones);
@@ -103,7 +89,7 @@ function flatness(planet: PlanetDef, x: number, z: number): number {
 
 function rawHeight(planet: PlanetDef, x: number, z: number): number {
   let h = (noise(x * 0.3, z * 0.3) - 0.5) * 0.35 + (noise(x * 1.1, z * 1.1) - 0.5) * 0.08;
-  for (const crater of CRATERS) {
+  for (const crater of planet.scenery.craters) {
     const d = Math.hypot(x - crater.x, z - crater.z) / crater.radius;
     if (d < 1) h -= (1 - d * d) * 0.5 * crater.radius * 0.28;
     else if (d < 1.45) h += Math.sin(((d - 1) / 0.45) * Math.PI) * 0.16 * crater.radius * 0.3;
@@ -119,9 +105,9 @@ export function heightAt(planet: PlanetDef, x: number, z: number): number {
 }
 
 /** How deep inside a crater bowl a point is, 0..1, for darker crater floors. */
-function craterDepth(x: number, z: number): number {
+function craterDepth(planet: PlanetDef, x: number, z: number): number {
   let depth = 0;
-  for (const crater of CRATERS) {
+  for (const crater of planet.scenery.craters) {
     const d = Math.hypot(x - crater.x, z - crater.z) / crater.radius;
     if (d < 1) depth = Math.max(depth, 1 - d);
   }
@@ -150,7 +136,7 @@ function ground(planet: PlanetDef): Mesh {
     // Broad light and dark "seas", lighter rims, darker crater floors and rocky slopes.
     const patch = noise(x * 0.09, z * 0.09);
     const grain = noise(x * 0.9, z * 0.9);
-    let t = 0.25 + patch * 0.55 + (grain - 0.5) * 0.2 + position.getY(i) * 0.25 - craterDepth(x, z) * 0.35;
+    let t = 0.25 + patch * 0.55 + (grain - 0.5) * 0.2 + position.getY(i) * 0.25 - craterDepth(planet, x, z) * 0.35;
     t = Math.min(1, Math.max(0, t));
     tint.copy(low).lerp(high, t);
     const slope = 1 - normal.getY(i);
@@ -237,8 +223,7 @@ function scatter(planet: PlanetDef, keepClear: readonly (Point & { radius: numbe
   return mesh;
 }
 
-function starfield(): Points {
-  const count = 1400;
+function starfield(count: number): Points {
   const positions = new Float32Array(count * 3);
   for (let i = 0; i < count; i += 1) {
     const u = hash(i, 0.5) * 2 - 1;
@@ -259,10 +244,10 @@ export interface TerrainView {
 export function buildTerrain(planet: PlanetDef, keepClear: readonly (Point & { radius: number })[]): TerrainView {
   const root = new Group();
   const ridgeView = ridge(planet);
-  root.add(ground(planet), ridgeView.root, scatter(planet, keepClear), starfield());
+  root.add(ground(planet), ridgeView.root, scatter(planet, keepClear), starfield(planet.scenery.starCount));
   // A few big boulders along the map edge frame the playfield.
   let seed = 200;
-  for (const [x, z, s] of [[-15.5, 4, 2.2], [15.5, -2, 2.6], [-15.8, -20, 2.4], [15.6, -27, 2], [-6, 10.5, 1.8], [8, 10.4, 2.1], [0, -31.5, 2.6], [-12, -31, 2]] as const) {
+  for (const [x, z, s] of planet.scenery.edgeBoulders) {
     seed += 1;
     const boulder = rock(planet, s, seed);
     boulder.position.set(x, heightAt(planet, x, z) + s * 0.3, z);

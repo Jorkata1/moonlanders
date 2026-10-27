@@ -12,10 +12,15 @@ export interface DepositDef extends Point {
   readonly zone: string | null;
 }
 
+export type MachineModelId = "smelter" | "purifier" | "wireMill" | "fuelSynth" | "engineWorks";
+
 export interface MachineDef extends Point {
   readonly id: string;
   readonly name: string;
+  readonly model: MachineModelId;
   readonly input: ItemId;
+  /** Assemblers need one of each input per item; robots only ever feed the first input. */
+  readonly secondInput?: { readonly item: ItemId; readonly pad: Point };
   readonly output: ItemId;
   readonly secondsPerItem: number;
   readonly inputPad: Point;
@@ -52,6 +57,8 @@ export interface ObjectiveDef {
 }
 
 export interface PlanetPalette {
+  /** Fog and particle colour while a dust storm rages. */
+  readonly dust: number;
   readonly groundLow: number;
   readonly groundHigh: number;
   readonly rock: number;
@@ -62,9 +69,41 @@ export interface PlanetPalette {
   readonly hemiGround: number;
 }
 
+export interface CraterDef extends Point {
+  readonly radius: number;
+}
+
+export type DecorKind = "solarFarm" | "antenna" | "crates" | "flag" | "fuelTanks";
+
+export interface DecorDef extends Point {
+  readonly kind: DecorKind;
+  readonly rotation?: number;
+}
+
+/** Set dressing that has no gameplay effect. */
+export interface SceneryDef {
+  readonly craters: readonly CraterDef[];
+  /** Big boulders that frame the map edge: x, z, scale. */
+  readonly edgeBoulders: ReadonlyArray<readonly [number, number, number]>;
+  readonly decor: readonly DecorDef[];
+  readonly cables: ReadonlyArray<readonly [Point, Point]>;
+  /** Blinking posts either side of the ridge gap. */
+  readonly beaconRows: readonly number[];
+  readonly starCount: number;
+}
+
+/** How the start screen presents this planet. */
+export interface RouteCardDef {
+  readonly label: string;
+  readonly resources: string;
+  readonly dot: readonly [string, string];
+}
+
 export interface PlanetDef {
   readonly id: string;
   readonly name: string;
+  /** The name as it reads mid-sentence, e.g. "the Moon". */
+  readonly phrase: string;
   readonly palette: PlanetPalette;
   readonly bounds: { readonly minX: number; readonly maxX: number; readonly minZ: number; readonly maxZ: number };
   /** Ridge that blocks the way north until the path unlock is bought. */
@@ -80,6 +119,12 @@ export interface PlanetDef {
   readonly machines: readonly MachineDef[];
   readonly unlocks: readonly UnlockDef[];
   readonly objectives: readonly ObjectiveDef[];
-  /** Unlock that switches meteor showers on. */
-  readonly meteorsAfter: string;
+  /** Meteor showers start once this unlock is bought; each impact leaves a chunk of `reward`. */
+  readonly meteors: { readonly after: string; readonly reward: ItemId } | null;
+  /** Dust storms start once this unlock is bought. */
+  readonly storms: { readonly after: string } | null;
+  readonly scenery: SceneryDef;
+  readonly route: RouteCardDef;
+  /** Captions for the pod-landing cinematic when the player arrives. */
+  readonly arrivalCaptions: readonly string[];
 }

@@ -15,6 +15,9 @@ export type SimEvent =
   | { type: "dropped"; item: ItemId; at: Point }
   | { type: "meteorWarning"; id: number; at: Point }
   | { type: "meteorImpact"; id: number; at: Point; hitPlayer: boolean; itemsLost: number }
+  | { type: "stormWarning"; seconds: number }
+  | { type: "stormStart" }
+  | { type: "stormEnd" }
   | { type: "oxygenLow" }
   | { type: "oxygenOut"; itemsLost: number }
   | { type: "backpackFull" }

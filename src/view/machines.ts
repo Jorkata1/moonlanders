@@ -18,6 +18,8 @@ import { canvasTexture, panelTexture } from "./textures";
 export interface MachineModel {
   root: Group;
   inputTray: Group;
+  /** Hopper for the second input, on machines that take two. */
+  secondTray?: Group;
   outputTray: Group;
   update(time: number, dt: number, working: boolean, progress: number): void;
 }
@@ -32,7 +34,7 @@ function puffTexture(): CanvasTexture {
   });
 }
 
-function beltMaterial(): MeshStandardMaterial {
+export function beltMaterial(): MeshStandardMaterial {
   const base = canvasTexture("conveyor-belt", 64, 64, (ctx) => {
     ctx.fillStyle = "#23262e";
     ctx.fillRect(0, 0, 64, 64);
@@ -48,7 +50,7 @@ function beltMaterial(): MeshStandardMaterial {
 }
 
 /** Rising puffs (smoke, steam) that loop while a machine works. */
-function emitter(root: Group, x: number, y: number, z: number, color: number, count: number, rise: number) {
+export function emitter(root: Group, x: number, y: number, z: number, color: number, count: number, rise: number) {
   const puffs: Sprite[] = [];
   const holder = new Group();
   holder.userData.dynamic = true;
@@ -71,7 +73,7 @@ function emitter(root: Group, x: number, y: number, z: number, color: number, co
   };
 }
 
-function base(root: Group): void {
+export function base(root: Group): void {
   root.add(box(2.6, 0.24, 2.4, LOOK.dark(), 0, 0.12, 0, 0.06));
   root.add(box(2.66, 0.06, 2.46, glow(0xffc83d, 0.4), 0, 0.03, 0, 0.02));
   for (const [x, z] of [[-1.15, -1.05], [1.15, -1.05], [-1.15, 1.05], [1.15, 1.05]] as const) {
@@ -79,28 +81,34 @@ function base(root: Group): void {
   }
 }
 
-/** Belt from the input pad up into the hopper, and the hopper itself. */
-function intake(root: Group, belt: MeshStandardMaterial): Group {
+/**
+ * Belt from the input pad up into the hopper, and the hopper itself.
+ * `side` 1 faces the front-left pad, -1 the back-left pad of two-input machines.
+ */
+export function intake(root: Group, belt: MeshStandardMaterial, side: 1 | -1 = 1): Group {
+  const hopperZ = side === 1 ? 0.05 : -0.8;
+  const beltZ = side === 1 ? 0.75 : -1.4;
+  const legs = side === 1 ? [1.25, 0.45] : [-1.9, -1.1];
   const conveyor = new Group();
   conveyor.add(box(0.5, 0.06, 1.4, belt, 0, 0, 0, 0.01));
   conveyor.add(box(0.06, 0.14, 1.4, LOOK.steel(), -0.28, 0.03, 0, 0.02));
   conveyor.add(box(0.06, 0.14, 1.4, LOOK.steel(), 0.28, 0.03, 0, 0.02));
-  conveyor.position.set(-1.35, 0.75, 0.75);
-  conveyor.rotation.x = 0.55;
+  conveyor.position.set(-1.35, 0.75, beltZ);
+  conveyor.rotation.x = 0.55 * side;
   root.add(conveyor);
-  for (const z of [1.25, 0.45]) root.add(box(0.08, 0.7, 0.08, LOOK.steel(), -1.35, 0.35, z, 0.02));
+  for (const z of legs) root.add(box(0.08, 0.7, 0.08, LOOK.steel(), -1.35, 0.35, z, 0.02));
   const funnelMaterial = LOOK.steel().clone();
   funnelMaterial.side = DoubleSide;
-  root.add(mesh(new CylinderGeometry(0.55, 0.25, 0.55, 16, 1, true), funnelMaterial, -1.3, 1.4, 0.05));
-  root.add(mesh(new TorusGeometry(0.55, 0.04, 6, 20), LOOK.orange(), -1.3, 1.67, 0.05).rotateX(Math.PI / 2));
+  root.add(mesh(new CylinderGeometry(0.55, 0.25, 0.55, 16, 1, true), funnelMaterial, -1.3, 1.4, hopperZ));
+  root.add(mesh(new TorusGeometry(0.55, 0.04, 6, 20), LOOK.orange(), -1.3, 1.67, hopperZ).rotateX(Math.PI / 2));
   const tray = new Group();
-  tray.position.set(-1.3, 1.2, 0.05);
+  tray.position.set(-1.3, 1.2, hopperZ);
   tray.userData.dynamic = true;
   root.add(tray);
   return tray;
 }
 
-function outlet(root: Group): Group {
+export function outlet(root: Group): Group {
   root.add(box(1.0, 0.1, 0.9, LOOK.steel(), 1.35, 0.5, 0.85, 0.03));
   root.add(box(1.0, 0.18, 0.06, LOOK.dark(), 1.35, 0.6, 1.28, 0.02));
   root.add(box(0.06, 0.18, 0.9, LOOK.dark(), 1.83, 0.6, 0.85, 0.02));
@@ -114,7 +122,7 @@ function outlet(root: Group): Group {
   return tray;
 }
 
-function consolePanel(root: Group, x: number, z: number, screenColor: number): MeshStandardMaterial {
+export function consolePanel(root: Group, x: number, z: number, screenColor: number): MeshStandardMaterial {
   root.add(box(0.5, 0.7, 0.3, LOOK.panel(), x, 0.6, z, 0.04));
   const screen = surface({ color: 0x0a1612, emissive: screenColor, emissiveIntensity: 1.4, roughness: 0.2, noShadow: true }).clone();
   root.add(box(0.38, 0.24, 0.03, screen, x, 0.82, z + 0.16, 0.02).rotateX(-0.2));

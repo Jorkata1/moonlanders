@@ -1,6 +1,7 @@
-import { DEPOSIT, MACHINE, PLAYER, speedFor } from "../config";
+import { DEPOSIT, MACHINE, PLAYER, STORM, speedFor } from "../config";
 import type { Point } from "../planets/types";
-import type { GameState } from "./state";
+import { isInsideDome } from "./hazards";
+import { isStormRaging, type GameState } from "./state";
 
 const ROCKET_RADIUS = 1.9;
 const TRADER_RADIUS = 1.2;
@@ -105,7 +106,8 @@ export function movePlayer(state: GameState, input: MoveInput, dt: number): void
   if (!player.moving) return;
 
   const boost = state.boostSeconds > 0 ? BOOST_SPEED_FACTOR : 1;
-  const speed = speedFor(state.upgrades.speed) * boost * length;
+  const storm = isStormRaging(state) && !isInsideDome(state, player) ? STORM.speedMultiplier : 1;
+  const speed = speedFor(state.upgrades.speed) * boost * storm * length;
   const nx = input.x / Math.hypot(input.x, input.z);
   const nz = input.z / Math.hypot(input.x, input.z);
   player.x += nx * speed * dt;

@@ -15,7 +15,7 @@ import { TIPS, createTutorial, type TipId, type TutorialSignals } from "./tutori
 import { createPlayerView, createRobotsView } from "./view/actors";
 import { createEffects } from "./view/fx";
 import { ItemPool } from "./view/items";
-import { createRenderPipeline, enableShadows } from "./view/render";
+import { createRenderPipeline, disposeScene, enableShadows } from "./view/render";
 import { landerModel } from "./view/structures";
 import { buildWorld } from "./view/world";
 
@@ -52,6 +52,8 @@ export interface Game {
   skipIntro(): void;
   acknowledgeCoach(): void;
   readonly inIntro: () => boolean;
+  /** Stop the loop and free the scene so the next planet can take over the canvas. */
+  dispose(): void;
 }
 
 export function createGame(canvas: HTMLCanvasElement, state: GameState, quality: Quality, controls: MoveControls, hud: Hud, audio: AudioKit, options: GameOptions, callbacks: GameCallbacks): Game {
@@ -96,6 +98,7 @@ export function createGame(canvas: HTMLCanvasElement, state: GameState, quality:
       hud.setVisible(false);
     },
     firstMeteor: () => showTip("meteor"),
+    firstStorm: () => showTip("storm"),
   });
 
   function showTip(id: TipId): void {
@@ -108,7 +111,7 @@ export function createGame(canvas: HTMLCanvasElement, state: GameState, quality:
 
   if (options.playIntro) {
     const offset = CAMERA_OFFSET.clone();
-    intro = createIntro(lander, podSpot, world.groundAt(podSpot).y, offset);
+    intro = createIntro(lander, podSpot, world.groundAt(podSpot).y, offset, state.planet.arrivalCaptions);
     intro.onTouchdown(() => {
       fx.dust(world.groundAt(podSpot).add(new Vector3(0, 0.2, 0)), 30, 0xb9bccb);
       audio.play("impact");
@@ -277,6 +280,15 @@ export function createGame(canvas: HTMLCanvasElement, state: GameState, quality:
       if (!intro || intro.done()) return;
       intro.skip();
       finishIntro();
+    },
+    dispose() {
+      pipeline.renderer.setAnimationLoop(null);
+      window.removeEventListener("resize", resize);
+      hud.showPanel(null, state.credits);
+      hud.showCoach(null);
+      audio.setHum(0);
+      disposeScene(scene);
+      pipeline.dispose();
     },
     acknowledgeCoach() {
       if (tutorial && !tutorial.finished()) {

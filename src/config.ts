@@ -1,9 +1,9 @@
 /** Tunable numbers for the whole game. Distances in metres, times in seconds, money in credits. */
 
-export const ITEM_IDS = ["ironOre", "ice", "plate", "water"] as const;
+export const ITEM_IDS = ["ironOre", "ice", "plate", "water", "copperOre", "dryIce", "wire", "fuelCell", "engine"] as const;
 export type ItemId = (typeof ITEM_IDS)[number];
 
-export type ItemShape = "ore" | "ice" | "plate" | "canister";
+export type ItemShape = "ore" | "ice" | "plate" | "canister" | "coil" | "cell" | "engine";
 
 export interface ItemDef {
   readonly name: string;
@@ -20,6 +20,11 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   ice: { name: "Ice", plural: "Ice", color: 0x9fe3ff, sellPrice: 1, shape: "ice", stackHeight: 0.2 },
   plate: { name: "Metal plate", plural: "Metal plates", color: 0xc9d1da, sellPrice: 3, shape: "plate", stackHeight: 0.085 },
   water: { name: "Water tank", plural: "Water tanks", color: 0x3d8bff, sellPrice: 5, shape: "canister", stackHeight: 0.24 },
+  copperOre: { name: "Copper ore", plural: "Copper ore", color: 0x3fd1a0, sellPrice: 2, shape: "ore", stackHeight: 0.2 },
+  dryIce: { name: "Dry ice", plural: "Dry ice", color: 0xe4e8ff, sellPrice: 2, shape: "ice", stackHeight: 0.2 },
+  wire: { name: "Copper wire", plural: "Copper wire", color: 0xe8894a, sellPrice: 6, shape: "coil", stackHeight: 0.13 },
+  fuelCell: { name: "Fuel cell", plural: "Fuel cells", color: 0x8cf06a, sellPrice: 8, shape: "cell", stackHeight: 0.24 },
+  engine: { name: "Rocket engine", plural: "Rocket engines", color: 0xff6a3d, sellPrice: 30, shape: "engine", stackHeight: 0.3 },
 };
 
 export const PLAYER = {
@@ -56,6 +61,17 @@ export const PADS = {
   /** Every unlock takes about this long to pay off, however expensive. */
   paySeconds: 1.6,
   minPayPerSecond: 10,
+} as const;
+
+/** Martian dust storms: a warning, then a storm that slows walking and burns air faster outside the dome. */
+export const STORM = {
+  firstDelaySeconds: 40,
+  minCalmSeconds: 45,
+  maxCalmSeconds: 70,
+  warningSeconds: 6,
+  durationSeconds: 18,
+  oxygenDrainMultiplier: 2,
+  speedMultiplier: 0.7,
 } as const;
 
 export const METEOR = {
@@ -124,10 +140,10 @@ export interface UpgradeDef {
 
 /** costs[n] is the price of going from level n to n + 1; the array length is the max level. */
 export const UPGRADES: Record<UpgradeId, UpgradeDef> = {
-  speed: { name: "Jet boots", description: "+12% walking speed", costs: [45, 110, 220, 400] },
-  capacity: { name: "Bigger backpack", description: "+3 carry slots", costs: [40, 100, 210, 380] },
-  mining: { name: "Laser drill", description: "Mine 18% faster", costs: [50, 120, 240, 420] },
-  oxygen: { name: "Oxygen tank", description: "+20 s of air", costs: [35, 90, 180, 340] },
+  speed: { name: "Jet boots", description: "+12% walking speed", costs: [45, 110, 220, 400, 620, 900] },
+  capacity: { name: "Bigger backpack", description: "+3 carry slots", costs: [40, 100, 210, 380, 580, 840] },
+  mining: { name: "Laser drill", description: "Mine 18% faster", costs: [50, 120, 240, 420, 640, 920] },
+  oxygen: { name: "Oxygen tank", description: "+20 s of air", costs: [35, 90, 180, 340, 540, 780] },
 };
 
 export function speedFor(level: number): number {

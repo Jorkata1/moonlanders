@@ -7,13 +7,14 @@ import type { Effects } from "./fx";
 import { StackView, type ItemPool } from "./items";
 import { heightAt } from "./terrain";
 import { canvasTexture } from "./textures";
+import { chipColor } from "./deposits";
 
 const STRIDE_SPEED = 11;
 const TURN_SMOOTHING = 14;
 const ASTRONAUT_SCALE = 1.2;
 const SPARK_INTERVAL = 0.06;
 const CHIP_INTERVAL = 0.22;
-const ROBOT_ACCENTS: Record<string, number> = { "robot-smelter": 0xff8a2a, "robot-purifier": 0x2fb7c9 };
+const ROBOT_ACCENTS: Record<string, number> = { "robot-smelter": 0xff8a2a, "robot-purifier": 0x2fb7c9, "robot-wire": 0x3fd1a0, "robot-fuel": 0x8cf06a };
 
 function turnToward(current: number, target: number, amount: number): number {
   const delta = Math.atan2(Math.sin(target - current), Math.cos(target - current));
@@ -150,7 +151,7 @@ export function createPlayerView(scene: Scene, pool: ItemPool, fx: Effects): Pla
         }
         if (chipTimer <= 0) {
           chipTimer = CHIP_INTERVAL;
-          fx.chips(hit, ITEMS[deposit.item].color, deposit.item === "ice" ? 0xbfefff : 0x4a4550, 2);
+          fx.chips(hit, ITEMS[deposit.item].color, chipColor(deposit.item), 2);
         }
       } else {
         beam.hide();

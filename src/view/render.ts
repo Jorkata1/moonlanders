@@ -5,13 +5,16 @@ import {
   MeshStandardMaterial,
   PCFSoftShadowMap,
   PMREMGenerator,
+  Points,
+  Sprite,
+  Texture,
   Vector2,
   WebGLRenderTarget,
   WebGLRenderer,
+  type Material,
   type Object3D,
   type PerspectiveCamera,
   type Scene,
-  type Texture,
 } from "three";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
@@ -29,6 +32,8 @@ export interface RenderPipeline {
   resize(width: number, height: number): void;
   /** Give every material flagged `userData.reflective` the studio reflection map. */
   applyReflections(root: Object3D): void;
+  /** Free GPU memory so another pipeline can take over the same canvas. */
+  dispose(): void;
 }
 
 function createReflectionMap(renderer: WebGLRenderer): Texture {
@@ -88,6 +93,16 @@ export function createRenderPipeline(canvas: HTMLCanvasElement, scene: Scene, ca
       bloomPass?.resolution.set(width / 2, height / 2);
     },
     applyReflections,
+    dispose() {
+      composer?.dispose();
+      bloomPass?.dispose();
+      reflections.dispose();
+      // The next renderer reuses this WebGL context and assumes default upload settings.
+      const gl = renderer.getContext();
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      renderer.dispose();
+    },
   };
 }
 
@@ -100,4 +115,20 @@ export function enableShadows(root: Object3D): void {
     object.castShadow = mat.userData.noShadow !== true && object.userData.noCastShadow !== true;
     object.receiveShadow = true;
   });
+}
+
+function disposeMaterial(material: Material): void {
+  for (const value of Object.values(material)) if (value instanceof Texture) value.dispose();
+  material.dispose();
+}
+
+/** Release every geometry, material and texture in the scene. Shared ones are re-uploaded on next use. */
+export function disposeScene(scene: Scene): void {
+  scene.traverse((object) => {
+    if (!(object instanceof Mesh || object instanceof Points || object instanceof Sprite)) return;
+    object.geometry.dispose();
+    const materials: Material[] = Array.isArray(object.material) ? object.material : [object.material];
+    materials.forEach(disposeMaterial);
+  });
+  scene.clear();
 }

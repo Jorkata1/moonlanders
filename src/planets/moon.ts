@@ -7,7 +7,9 @@ import type { PlanetDef } from "./types";
 export const MOON: PlanetDef = {
   id: "moon",
   name: "The Moon",
+  phrase: "the Moon",
   palette: {
+    dust: 0x9a9db0,
     groundLow: 0x4c4f62,
     groundHigh: 0x8a8ea3,
     rock: 0x474a59,
@@ -43,6 +45,7 @@ export const MOON: PlanetDef = {
     {
       id: "smelter",
       name: "Smelter",
+      model: "smelter",
       input: "ironOre",
       output: "plate",
       secondsPerItem: 2.0,
@@ -54,6 +57,7 @@ export const MOON: PlanetDef = {
     {
       id: "purifier",
       name: "Water purifier",
+      model: "purifier",
       input: "ice",
       output: "water",
       secondsPerItem: 2.4,
@@ -85,5 +89,46 @@ export const MOON: PlanetDef = {
     { text: "Load the rocket: 25 plates and 16 water tanks", target: { x: -8, z: -17.2 }, check: { kind: "rocketComplete" } },
     { text: "Stand on the launch pad to lift off", target: { x: -8, z: -17.2 }, check: { kind: "launched" } },
   ],
-  meteorsAfter: "smelter",
+  meteors: { after: "smelter", reward: "ironOre" },
+  storms: null,
+  scenery: {
+    craters: [
+      { x: -9.5, z: 6.5, radius: 2.2 },
+      { x: 3.5, z: 7.5, radius: 1.4 },
+      { x: -12, z: -13.5, radius: 2.4 },
+      { x: 11, z: -25, radius: 2 },
+      { x: -11.5, z: -27, radius: 1.6 },
+      { x: 12.5, z: -9, radius: 1.3 },
+    ],
+    edgeBoulders: [
+      [-15.5, 4, 2.2],
+      [15.5, -2, 2.6],
+      [-15.8, -20, 2.4],
+      [15.6, -27, 2],
+      [-6, 10.5, 1.8],
+      [8, 10.4, 2.1],
+      [0, -31.5, 2.6],
+      [-12, -31, 2],
+    ],
+    decor: [
+      { kind: "solarFarm", x: -11.6, z: 2.2 },
+      { kind: "antenna", x: -2.8, z: 7.6, rotation: 0.6 },
+      { kind: "crates", x: 2.6, z: 6.7, rotation: -0.3 },
+      { kind: "flag", x: 4.6, z: 4.2 },
+      { kind: "fuelTanks", x: -11.6, z: -17.5, rotation: 0.4 },
+      { kind: "crates", x: 11.2, z: -12.4, rotation: 1.2 },
+    ],
+    cables: [
+      [{ x: 2.6, z: 0.4 }, { x: 4.8, z: -3.3 }],
+      [{ x: -3.3, z: 3.9 }, { x: -8.8, z: 3.1 }],
+    ],
+    beaconRows: [-6.5, -12.6, -15],
+    starCount: 1400,
+  },
+  route: { label: "Moon", resources: "Iron · Ice", dot: ["#d9dbe6", "#6f7180"] },
+  arrivalCaptions: [
+    "Year 2187. Your scout pod is running on fumes.",
+    "The only way home is forward: rebuild a rocket and hop from world to world.",
+    "First stop, the Moon. Mine it, build on it, and get off this rock, pioneer.",
+  ],
 };

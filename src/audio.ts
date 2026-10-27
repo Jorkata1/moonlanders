@@ -1,6 +1,6 @@
 /** Tiny synthesised sound kit — no audio files to load or license. */
 
-export type Cue = "mine" | "pickup" | "drop" | "coin" | "pay" | "build" | "error" | "warning" | "impact" | "alarm" | "objective" | "upgrade" | "launch";
+export type Cue = "mine" | "pickup" | "drop" | "coin" | "pay" | "build" | "error" | "warning" | "impact" | "alarm" | "objective" | "upgrade" | "launch" | "wind";
 
 interface Tone {
   frequency: number;
@@ -44,6 +44,10 @@ const CUES: Record<Cue, Tone[]> = {
     { frequency: 523, endFrequency: 1046, duration: 0.25, type: "triangle", gain: 0.14 },
   ],
   launch: [{ frequency: 70, endFrequency: 30, duration: 3.5, type: "sawtooth", gain: 0.25 }],
+  wind: [
+    { frequency: 110, endFrequency: 190, duration: 1.4, type: "sawtooth", gain: 0.05 },
+    { frequency: 190, endFrequency: 90, duration: 1.6, type: "sawtooth", gain: 0.04, delay: 1.2 },
+  ],
 };
 
 export interface AudioKit {

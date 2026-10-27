@@ -7,6 +7,7 @@ import type { SimEvent } from "./sim/events";
 import type { GameState } from "./sim/state";
 import type { PlayerView, RobotsView } from "./view/actors";
 import type { Effects } from "./view/fx";
+import { chipColor } from "./view/deposits";
 import type { WorldView } from "./view/world";
 
 const SOUND_GAP_SECONDS = 0.05;
@@ -16,6 +17,7 @@ export interface FeedbackHooks {
   shake(amount: number): void;
   launch(): void;
   firstMeteor(): void;
+  firstStorm(): void;
 }
 
 /** Turns simulation events into sound, particles, flying items and HUD messages. */
@@ -45,7 +47,7 @@ export function createFeedback(state: GameState, world: WorldView, player: Playe
           const from = lift(event.from, 0.5);
           fx.flyItem(event.item, from, () => robots.positionOf(robotId) ?? from);
         }
-        fx.chips(lift(event.from, 0.4), ITEMS[event.item].color, event.item === "ice" ? 0xbfefff : 0x4a4550, 4);
+        fx.chips(lift(event.from, 0.4), ITEMS[event.item].color, chipColor(event.item), 4);
         return;
       }
       case "sold":
@@ -103,6 +105,20 @@ export function createFeedback(state: GameState, world: WorldView, player: Playe
         audio.play("impact");
         hooks.shake(0.5);
         if (event.hitPlayer) hud.toast(event.itemsLost > 0 ? `Meteor hit! You dropped ${event.itemsLost} items` : "Meteor hit! Watch the red circles", "bad");
+        return;
+      case "stormWarning":
+        audio.play("warning");
+        hud.toast(`Dust storm in ${event.seconds} s! Get to the dome or push through slowly`, "bad");
+        hooks.firstStorm();
+        return;
+      case "stormStart":
+        audio.play("wind");
+        hooks.shake(0.2);
+        hud.toast("Dust storm! Air drains twice as fast outside the dome", "bad");
+        return;
+      case "stormEnd":
+        audio.play("objective");
+        hud.toast("The storm has passed", "good");
         return;
       case "oxygenLow":
         audio.play("alarm");

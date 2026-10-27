@@ -87,7 +87,9 @@ export function updateMachines(state: GameState, dt: number): void {
     const def = machineDef(state, machine.id);
     if (machine.progress === null) {
       if (machine.input <= 0 || machine.output >= MACHINE.outputCapacity) continue;
+      if (def.secondInput && machine.secondInput <= 0) continue;
       machine.input -= 1;
+      if (def.secondInput) machine.secondInput -= 1;
       machine.progress = 0;
     }
     machine.progress += (dt * boostFactor(state)) / def.secondsPerItem;
@@ -130,6 +132,16 @@ function transferOnce(state: GameState, emit: Emit): boolean {
         player.carry.splice(index, 1);
         machine.input += 1;
         emit({ type: "delivered", item: def.input, to: def });
+        return true;
+      }
+    }
+    const second = def.secondInput;
+    if (second && onPad(second.pad) && machine.secondInput < MACHINE.inputCapacity) {
+      const index = topIndex(player.carry, (item) => item === second.item);
+      if (index >= 0) {
+        player.carry.splice(index, 1);
+        machine.secondInput += 1;
+        emit({ type: "delivered", item: second.item, to: def });
         return true;
       }
     }
