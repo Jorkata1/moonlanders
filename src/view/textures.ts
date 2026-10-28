@@ -100,3 +100,34 @@ export function regolithTexture(repeat: number): CanvasTexture {
   return texture;
 }
 
+
+/** A normal map from the regolith pattern: grains and pits catch the low sun. */
+export function regolithNormalTexture(repeat: number): CanvasTexture {
+  const source = regolithTexture(1).image as HTMLCanvasElement;
+  const size = source.width;
+  const input = (source.getContext("2d") as CanvasRenderingContext2D).getImageData(0, 0, size, size).data;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
+  const out = ctx.createImageData(size, size);
+  const h = (x: number, y: number) => (input[(((y + size) % size) * size + ((x + size) % size)) * 4] ?? 0) / 255;
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const dx = (h(x + 1, y) - h(x - 1, y)) * 3;
+      const dy = (h(x, y + 1) - h(x, y - 1)) * 3;
+      const len = Math.hypot(dx, dy, 1);
+      const i = (y * size + x) * 4;
+      out.data[i] = ((-dx / len) * 0.5 + 0.5) * 255;
+      out.data[i + 1] = ((dy / len) * 0.5 + 0.5) * 255;
+      out.data[i + 2] = ((1 / len) * 0.5 + 0.5) * 255;
+      out.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(out, 0, 0);
+  const texture = new CanvasTexture(canvas);
+  texture.wrapS = RepeatWrapping;
+  texture.wrapT = RepeatWrapping;
+  texture.repeat.set(repeat, repeat);
+  return texture;
+}

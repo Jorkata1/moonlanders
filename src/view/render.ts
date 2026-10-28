@@ -20,11 +20,31 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import type { Quality } from "../quality";
 
 const EXPOSURE = 1.0;
-const BLOOM = { strength: 0.55, radius: 0.5, threshold: 1.0 } as const;
+const BLOOM = { strength: 0.6, radius: 0.55, threshold: 0.95 } as const;
+
+/** Final look: a touch more contrast and saturation, cool shadows, warm highlights and a soft vignette. */
+const GRADE = {
+  uniforms: { tDiffuse: { value: null }, vignette: { value: 0.42 } },
+  vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float vignette; varying vec2 vUv;
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+      c.rgb = mix(vec3(l), c.rgb, 1.3);
+      c.rgb = (c.rgb - 0.5) * 1.12 + 0.5;
+      c.rgb += mix(vec3(-0.012, 0.0, 0.03), vec3(0.03, 0.012, -0.02), smoothstep(0.15, 0.8, l));
+      float d = distance(vUv, vec2(0.5));
+      c.rgb *= 1.0 - vignette * smoothstep(0.35, 0.85, d);
+      gl_FragColor = vec4(clamp(c.rgb, 0.0, 1.0), c.a);
+    }`,
+};
 
 export interface RenderPipeline {
   readonly renderer: WebGLRenderer;
@@ -56,14 +76,21 @@ export function createRenderPipeline(canvas: HTMLCanvasElement, scene: Scene, ca
   const reflections = createReflectionMap(renderer);
   let composer: EffectComposer | null = null;
   let bloomPass: UnrealBloomPass | null = null;
+  let aoPass: GTAOPass | null = null;
 
   if (quality.bloom) {
     const target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: quality.msaaSamples });
     composer = new EffectComposer(renderer, target);
     composer.addPass(new RenderPass(scene, camera));
+    const ao = new GTAOPass(scene, camera, 1, 1);
+    ao.updateGtaoMaterial({ radius: 1.8, distanceExponent: 1.4, thickness: 2.5, scale: 2.2, samples: 16 });
+    ao.blendIntensity = 1;
+    composer.addPass(ao);
+    aoPass = ao;
     bloomPass = new UnrealBloomPass(new Vector2(1, 1), BLOOM.strength, BLOOM.radius, BLOOM.threshold);
     composer.addPass(bloomPass);
     composer.addPass(new OutputPass());
+    composer.addPass(new ShaderPass(GRADE));
   }
 
   function applyReflections(root: Object3D): void {
@@ -91,6 +118,7 @@ export function createRenderPipeline(canvas: HTMLCanvasElement, scene: Scene, ca
       composer?.setPixelRatio(quality.pixelRatio);
       // Bloom at half resolution looks the same and costs a quarter as much.
       bloomPass?.resolution.set(width / 2, height / 2);
+      aoPass?.setSize(width * quality.pixelRatio, height * quality.pixelRatio);
     },
     applyReflections,
     dispose() {

@@ -22,7 +22,7 @@ import { buildTerrain, heightAt } from "./terrain";
 import { createWorkerSites } from "./workerSites";
 
 const SHADOW_EXTENT = 16;
-const SUN_OFFSET = new Vector3(-9, 18, 7);
+const SUN_OFFSET = new Vector3(-13, 13, 6);
 const POP_SECONDS = 0.6;
 /** Share of the bore after which the gap boulders start to crumble. */
 const BREAKTHROUGH_AT = 0.85;
@@ -51,10 +51,15 @@ function place(object: Object3D, planet: PlanetDef, point: Point, lift = 0): voi
 }
 
 function lights(scene: Scene, planet: PlanetDef, shadowMapSize: number): DirectionalLight {
-  scene.add(new HemisphereLight(planet.palette.hemiSky, planet.palette.hemiGround, 0.7));
-  const sun = new DirectionalLight(planet.palette.sun, 2.4);
+  scene.add(new HemisphereLight(0x8a9cff, 0x241e2a, 0.3));
+  const sun = new DirectionalLight(0xffe0bc, 3.8);
+  // A cool rim light from behind picks out silhouettes against the dark ground.
+  const rim = new DirectionalLight(0x86a2ff, 1.5);
+  rim.position.set(6, 10, -18);
+  scene.add(rim);
   sun.castShadow = shadowMapSize > 0;
-  sun.shadow.mapSize.set(shadowMapSize || 1, shadowMapSize || 1);
+  sun.shadow.mapSize.set(shadowMapSize ? 4096 : 1, shadowMapSize ? 4096 : 1);
+  sun.shadow.radius = 3;
   Object.assign(sun.shadow.camera, { left: -SHADOW_EXTENT, right: SHADOW_EXTENT, top: SHADOW_EXTENT, bottom: -SHADOW_EXTENT, near: 1, far: 60 });
   sun.shadow.bias = -0.0005;
   sun.shadow.normalBias = 0.03;

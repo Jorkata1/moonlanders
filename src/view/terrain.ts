@@ -10,6 +10,7 @@ import {
   Float32BufferAttribute,
   Group,
   IcosahedronGeometry,
+  MeshBasicMaterial,
   InstancedMesh,
   Matrix4,
   Mesh,
@@ -21,10 +22,12 @@ import {
 } from "three";
 import type { PlanetDef, Point } from "../planets/types";
 import { flat, surface } from "./materials";
-import { regolithTexture } from "./textures";
+import { regolithNormalTexture, regolithTexture } from "./textures";
 
 const GROUND_SIZE = 110;
-const GROUND_SEGMENTS = 150;
+const GROUND_SEGMENTS = 240;
+const WARM_DUST = new Color(0x8a7462);
+const COOL_DUST = new Color(0x55607e);
 const EDGE_RISE = 0.55;
 /** Pebbles and small rocks strewn over the map. */
 const SCATTER_COUNT = 520;
@@ -139,15 +142,18 @@ function ground(planet: PlanetDef): Mesh {
     // Broad light and dark "seas", lighter rims, darker crater floors and rocky slopes.
     const patch = noise(x * 0.09, z * 0.09);
     const grain = noise(x * 0.9, z * 0.9);
-    let t = 0.25 + patch * 0.55 + (grain - 0.5) * 0.2 + position.getY(i) * 0.25 - craterDepth(planet, x, z) * 0.35;
+    let t = 0.08 + patch * 0.95 + (grain - 0.5) * 0.3 + position.getY(i) * 0.35 - craterDepth(planet, x, z) * 0.5;
     t = Math.min(1, Math.max(0, t));
     tint.copy(low).lerp(high, t);
+    // Warm and cool mineral patches break up the grey.
+    tint.lerp(WARM_DUST, Math.max(0, noise(x * 0.05 + 7, z * 0.05) - 0.45) * 0.9).lerp(COOL_DUST, Math.max(0, noise(x * 0.07 - 3, z * 0.07 + 5) - 0.5) * 0.8);
     const slope = 1 - normal.getY(i);
     if (slope > 0.08) tint.lerp(rockTone, Math.min(1, (slope - 0.08) * 3));
     tint.toArray(colors, i * 3);
   }
   geometry.setAttribute("color", new Float32BufferAttribute(colors, 3));
-  const material = new MeshStandardMaterial({ map: regolithTexture(GROUND_SIZE / 7), vertexColors: true, roughness: 0.96, metalness: 0 });
+  const material = new MeshStandardMaterial({ map: regolithTexture(GROUND_SIZE / 7), normalMap: regolithNormalTexture(GROUND_SIZE / 4.5), vertexColors: true, roughness: 0.96, metalness: 0 });
+  material.normalScale.set(2.4, 2.4);
   const mesh = new Mesh(geometry, material);
   mesh.receiveShadow = true;
   mesh.userData.noCastShadow = true;
@@ -158,14 +164,14 @@ function ground(planet: PlanetDef): Mesh {
 const ROCK_SHADES = [0.82, 0.92, 1.02, 1.12] as const;
 
 function rock(planet: PlanetDef, scale: number, seed: number): Mesh {
-  const geometry = new IcosahedronGeometry(1, 1);
+  const geometry = new IcosahedronGeometry(1, 2);
   const position = geometry.getAttribute("position") as BufferAttribute;
   for (let i = 0; i < position.count; i += 1) {
     const x = position.getX(i);
     const y = position.getY(i);
     const z = position.getZ(i);
     // Displace by position-based noise so shared corners move together and the rock stays closed.
-    const jitter = 0.78 + noise(x * 1.7 + seed, z * 1.7 + y * 1.3) * 0.45;
+    const jitter = 0.74 + noise(x * 1.7 + seed, z * 1.7 + y * 1.3) * 0.42 + noise(x * 4.1 + seed, y * 4.1 - z) * 0.12;
     position.setXYZ(i, x * jitter, y * jitter * 0.72, z * jitter);
   }
   geometry.computeVertexNormals();
@@ -256,6 +262,37 @@ function starfield(count: number): Points {
   return new Points(geometry, new PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false, fog: false }));
 }
 
+/** Earth hanging in the black sky, with a thin blue atmosphere. */
+function earth(): Group {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
+  ctx.fillStyle = "#1d4f9a";
+  ctx.fillRect(0, 0, 256, 128);
+  for (let i = 0; i < 60; i += 1) {
+    ctx.fillStyle = hash(i, 3) > 0.5 ? "#3f7a3a" : "#8a7a4a";
+    ctx.beginPath();
+    ctx.ellipse(hash(i, 1) * 256, 20 + hash(i, 2) * 88, 6 + hash(i, 4) * 18, 4 + hash(i, 5) * 10, hash(i, 6) * 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  for (let i = 0; i < 90; i += 1) {
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
+    ctx.beginPath();
+    ctx.ellipse(hash(i, 7) * 256, hash(i, 8) * 128, 8 + hash(i, 9) * 22, 2 + hash(i, 10) * 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const group = new Group();
+  const map = new CanvasTexture(canvas);
+  map.colorSpace = SRGBColorSpace;
+  const globe = new Mesh(new IcosahedronGeometry(9, 4), new MeshStandardMaterial({ map, roughness: 0.7, emissive: 0x16305a, emissiveIntensity: 0.35, fog: false }));
+  globe.rotation.set(0.4, 2.2, 0.2);
+  const halo = new Mesh(new IcosahedronGeometry(9.6, 4), new MeshBasicMaterial({ color: 0x6fb4ff, transparent: true, opacity: 0.18, fog: false, depthWrite: false }));
+  group.add(globe, halo);
+  group.position.set(-60, 48, -150);
+  return group;
+}
+
 export interface TerrainView {
   readonly root: Group;
   readonly ridge: RidgeView;
@@ -264,7 +301,7 @@ export interface TerrainView {
 export function buildTerrain(planet: PlanetDef, keepClear: readonly (Point & { radius: number })[]): TerrainView {
   const root = new Group();
   const ridgeView = ridge(planet);
-  root.add(ground(planet), ridgeView.root, scatter(planet, keepClear), starfield(planet.scenery.starCount));
+  root.add(ground(planet), ridgeView.root, scatter(planet, keepClear), starfield(planet.scenery.starCount), earth());
   // A few big boulders along the map edge frame the playfield.
   let seed = 200;
   for (const [x, z, s] of planet.scenery.edgeBoulders) {
