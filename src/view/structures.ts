@@ -74,58 +74,6 @@ export function workshopModel(): Group {
   return root;
 }
 
-export interface RocketModel {
-  root: Group;
-  ship: Group;
-  flame: Mesh;
-  windowMaterial: MeshStandardMaterial;
-}
-
-export function rocketModel(): RocketModel {
-  const root = new Group();
-  const ship = new Group();
-  const profile = [
-    new Vector2(0, 0), new Vector2(0.7, 0), new Vector2(0.85, 0.3), new Vector2(0.9, 1.4), new Vector2(0.88, 2.6),
-    new Vector2(0.78, 3.4), new Vector2(0.55, 4.1), new Vector2(0.25, 4.6), new Vector2(0, 4.8),
-  ];
-  ship.add(mesh(new LatheGeometry(profile, 32), LOOK.white()));
-  ship.add(mesh(new CylinderGeometry(0.9, 0.9, 0.3, 32), LOOK.orange(), 0, 1.2, 0));
-  ship.add(mesh(new ConeGeometry(0.56, 0.75, 32), LOOK.orange(), 0, 4.43, 0));
-  const windowMaterial = surface({ color: 0x9fe8ff, emissive: 0x4de3ff, emissiveIntensity: 1.4, roughness: 0.1, noShadow: true }).clone();
-  for (const y of [2.4, 3.1]) ship.add(mesh(new SphereGeometry(0.2, 16, 10), windowMaterial, 0, y, 0.82).rotateX(Math.PI / 2));
-  for (let i = 0; i < 4; i += 1) {
-    const fin = new Group();
-    fin.add(box(0.08, 1.2, 0.7, LOOK.orange(), 0, 0.6, 0, 0.03));
-    fin.position.set(Math.sin((i / 4) * Math.PI * 2 + Math.PI / 4) * 0.9, 0, Math.cos((i / 4) * Math.PI * 2 + Math.PI / 4) * 0.9);
-    fin.rotation.y = (i / 4) * Math.PI * 2 + Math.PI / 4;
-    ship.add(fin);
-  }
-  ship.add(mesh(new CylinderGeometry(0.45, 0.6, 0.35, 20), LOOK.dark(), 0, -0.1, 0));
-  const flame = mesh(new ConeGeometry(0.5, 2.2, 16, 1, true), glow(0xffa040, 4));
-  flame.rotation.x = Math.PI;
-  flame.position.y = -1.3;
-  flame.visible = false;
-  ship.add(flame);
-  ship.position.y = 0.6;
-  root.add(ship);
-  root.add(mesh(new CylinderGeometry(1.6, 1.8, 0.5, 8), LOOK.dark(), 0, 0.25, 0));
-  // Service tower beside the rocket.
-  const tower = new Group();
-  for (const y of [0.5, 1.5, 2.5, 3.5]) tower.add(box(0.7, 0.08, 0.7, LOOK.orange(), 0, y, 0, 0.02));
-  for (const [x, z] of [[-0.3, -0.3], [0.3, -0.3], [-0.3, 0.3], [0.3, 0.3]] as const) tower.add(box(0.07, 4, 0.07, LOOK.steel(), x, 2, z));
-  tower.add(box(1.2, 0.08, 0.14, LOOK.steel(), -0.8, 3.0, 0));
-  tower.position.set(2.0, 0, 0);
-  root.add(tower);
-  root.traverse((object) => {
-    if (object instanceof Mesh && object !== flame) object.castShadow = true;
-  });
-  flame.userData.dynamic = true;
-  ship.userData.dynamic = true;
-  bakeStatic(ship);
-  bakeStatic(root);
-  return { root, ship, flame, windowMaterial };
-}
-
 export interface LanderModel {
   root: Group;
   flame: Mesh;

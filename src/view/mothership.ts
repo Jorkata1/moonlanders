@@ -1,5 +1,9 @@
-import { ConeGeometry, CylinderGeometry, Group, SphereGeometry, Vector3, type MeshStandardMaterial } from "three";
+import { ConeGeometry, CylinderGeometry, Group, Mesh, PlaneGeometry, SphereGeometry, Vector3, type MeshStandardMaterial } from "three";
 import { LOOK, box, glow, mesh, surface } from "./materials";
+import { canvasTexture } from "./textures";
+
+const ZIX_GREEN = 0x7be0b4;
+const TEAL = "#2fb7c9";
 
 /** The carrier's flight over the base in the opening cinematic. */
 export const CARRIER = {
@@ -24,13 +28,42 @@ export interface MothershipModel {
   readonly engines: MeshStandardMaterial;
 }
 
-/** The cargo carrier seen in orbit at the start of the intro, dropping the base piece by piece. */
+/** Teal and white bands around the hull, like Zix's stall awning. */
+function hullTexture() {
+  return canvasTexture("zix-hull", 32, 128, (ctx) => {
+    ctx.fillStyle = "#eef3f7";
+    ctx.fillRect(0, 0, 32, 128);
+    ctx.fillStyle = TEAL;
+    for (let y = 0; y < 128; y += 32) ctx.fillRect(0, y, 32, 14);
+  });
+}
+
+/** "ZIX TRADING CO." painted along each side in glowing gold. */
+function nameplate(): Mesh {
+  const map = canvasTexture("zix-nameplate", 512, 64, (ctx) => {
+    ctx.fillStyle = "#10202a";
+    ctx.fillRect(0, 0, 512, 64);
+    ctx.fillStyle = "#ffd25a";
+    ctx.font = "bold 44px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("ZIX TRADING CO.", 256, 34);
+  });
+  return new Mesh(new PlaneGeometry(6, 0.75), surface({ map, emissiveMap: map, emissive: 0xffffff, emissiveIntensity: 1.6, roughness: 0.5, noShadow: true }));
+}
+
+/** Zix's trade barge, seen in orbit in the intro, dropping the base piece by piece. */
 export function mothershipModel(): MothershipModel {
   const root = new Group();
-  const hull = surface({ color: 0xd8dde6, roughness: 0.45, metalness: 0.4, reflective: true, envMapIntensity: 0.6 });
+  const hull = surface({ map: hullTexture(), roughness: 0.45, metalness: 0.3, reflective: true, envMapIntensity: 0.5 });
   root.add(mesh(new CylinderGeometry(1.6, 1.9, 11, 16), hull).rotateZ(Math.PI / 2));
   root.add(mesh(new ConeGeometry(1.6, 3.4, 16), hull, 7.2, 0, 0).rotateZ(-Math.PI / 2));
-  root.add(mesh(new SphereGeometry(0.7, 14, 10), surface({ color: 0x9fe8ff, emissive: 0x4de3ff, emissiveIntensity: 1.2, roughness: 0.1 }), 7.6, 0.7, 0));
+  // Cockpit in Zix's own green, with his two eye-stalks on top.
+  const skin = surface({ color: ZIX_GREEN, emissive: 0x1d5a40, emissiveIntensity: 0.4, roughness: 0.35 });
+  root.add(mesh(new SphereGeometry(0.8, 16, 12), skin, 7.4, 0.8, 0));
+  for (const z of [-0.35, 0.35]) {
+    root.add(mesh(new CylinderGeometry(0.06, 0.08, 1.1, 8), skin, 7.4, 1.9, z), mesh(new SphereGeometry(0.2, 12, 10), LOOK.white(), 7.4, 2.5, z), mesh(new SphereGeometry(0.09, 10, 8), surface({ color: 0x111111, roughness: 0.1 }), 7.58, 2.52, z));
+  }
   for (const z of [-1, 1]) {
     root.add(box(5, 0.25, 4.5, LOOK.panel(), -1, 0, z * 3.6, 0.1));
     root.add(box(1.4, 0.3, 1.4, LOOK.orange(), -2.8, 0, z * 5.6, 0.1));
@@ -47,7 +80,11 @@ export function mothershipModel(): MothershipModel {
   // Hull stripe and a row of lit windows along each side.
   const windows = glow(0xbfefff, 2.2);
   for (const z of [-1, 1]) {
-    root.add(box(9, 0.18, 0.05, LOOK.orange(), 0, 0.6, z * 1.72, 0.02));
+    root.add(box(9, 0.18, 0.05, glow(0xffd25a, 1.6), 0, 0.6, z * 1.72, 0.02));
+    const sign = nameplate();
+    sign.position.set(0, -0.35, z * 1.86);
+    if (z < 0) sign.rotation.y = Math.PI;
+    root.add(sign);
     for (let i = 0; i < 9; i += 1) root.add(box(0.32, 0.18, 0.05, windows, -3.6 + i * 0.95, 0.95, z * 1.66, 0.02));
   }
   // Navigation lights on the wing tips: red to port, green to starboard.

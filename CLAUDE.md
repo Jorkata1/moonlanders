@@ -24,7 +24,8 @@ src/
   planets/types.ts    PlanetDef: layout, deposits, machines, unlock pads, objectives, hazards, scenery, route card
   planets/index.ts    PLANETS in travel order, UPCOMING route cards, nextPlanet()
   planets/moon.ts     the Moon's layout, costs, rocket parts and mission list
-  planets/mars.ts     Mars: copper, dry ice, wire mill, fuel synthesizer, two-input engine works
+  planets/mars.ts     Mars: copper, dry ice, wire mill, fuel synthesizer, two-input engine works; your rocket lands east of the base and is refitted there
+  planets/text.ts     mission text built from the rocket's part counts
   sim/                pure game logic, unit-testable in Node
     state.ts          GameState and createState()
     step.ts           step(state, input, dt) → SimEvent[]; runs every system in order
@@ -49,7 +50,8 @@ src/
     holograms.ts      the spinning hologram icons above pads
     decor.ts          solar farm, antenna, crates and cables; each piece is its own root so the intro can drop it
     drones.ts         trader drone model and its dock
-    mothership.ts     the carrier seen in orbit during the opening
+    mothership.ts     Zix's trade barge that drops the base in the intros
+    rocket.ts         the rocket, built in stages: skeleton, hull bands (plates), water tank, refit engines and wiring; scaffold sinks when done
     storm.ts          dust-storm fog and blowing grains
     merchant.ts       Zix the alien trader and his stall
     characters.ts     astronaut, robot rover, hand-held laser drill

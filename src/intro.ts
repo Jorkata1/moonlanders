@@ -1,7 +1,6 @@
 import { CatmullRomCurve3, ConeGeometry, Mesh, Vector3, type Object3D, type Scene } from "three";
 import { glow } from "./view/materials";
 import { CARRIER, carrierAt, mothershipModel } from "./view/mothership";
-import type { LanderModel } from "./view/structures";
 
 export interface CameraShot {
   position: Vector3;
@@ -16,18 +15,28 @@ export interface DropProp {
   readonly kind: DropKind;
 }
 
+/** What brings the player down: the scout pod on the first planet, their own rocket after that. */
+export interface Descender {
+  readonly object: Object3D;
+  readonly flame: Object3D;
+  /** Resting position, in the object's parent space. */
+  readonly rest: Vector3;
+  /** Where it touches down, on the ground in world space. */
+  readonly spot: Vector3;
+  /** The pod drifts in at an angle; the rocket comes straight down on its engine. */
+  readonly drift: boolean;
+}
+
 export interface IntroOptions {
   readonly scene: Scene;
   readonly props: readonly DropProp[];
-  readonly lander: LanderModel;
-  /** Where the pod touches down, on the ground. */
-  readonly podSpot: Vector3;
+  readonly descender: Descender;
   /** Centre of the base (the dome), on the ground. */
   readonly base: Vector3;
   /** The normal gameplay camera the intro hands over to. */
   readonly gameplayShot: CameraShot;
   readonly captions: readonly string[];
-  /** The full opening (orbit, mothership) on the first planet; a shorter arrival elsewhere. */
+  /** The full opening on the first planet; a shorter arrival elsewhere. Zix's carrier drops the base in both. */
   readonly full: boolean;
   /** Pull the cinematic shots back by this factor (narrow portrait screens need more distance). */
   readonly distanceScale: number;
@@ -37,7 +46,7 @@ export interface Intro {
   /** Advance the intro; returns the camera shot, or null once it has finished. */
   update(dt: number): CameraShot | null;
   caption(): string | null;
-  /** True once the pod has landed, so the astronaut can be shown. */
+  /** True once the player's craft has landed, so the astronaut can be shown. */
   landed(): boolean;
   /** Fires on every touchdown with where it hit and whether it was a big piece. */
   onLand(handler: (at: Vector3, heavy: boolean) => void): void;
@@ -55,6 +64,8 @@ interface Timing {
   readonly captionTimes: readonly number[];
   /** Camera keyframe times; the last one is the gameplay shot. */
   readonly keyTimes: readonly number[];
+  /** How far along its pass the carrier already is when this cinematic starts. */
+  readonly carrierLead: number;
 }
 
 const FULL: Timing = {
@@ -65,16 +76,19 @@ const FULL: Timing = {
   touchdown: { dome: 4.0, rocket: 5.0, trader: 6.1, decor: 7.0, cable: 8.8, pad: 10.6 },
   captionTimes: [0.4, 4.4, 9.9],
   keyTimes: [0, 3.2, 6.4, 9.6, 12.8],
+  carrierLead: 0,
 };
 
 const ARRIVAL: Timing = {
-  duration: 10.5,
-  podTouchdown: 6.6,
+  duration: 11,
+  podTouchdown: 7,
   fallSeconds: 1.1,
   dropHeight: 24,
-  touchdown: { dome: 1.8, rocket: 2.6, trader: 3.5, decor: 4.2, cable: 5.6, pad: 7.2 },
-  captionTimes: [0.3, 3.2, 6.8],
-  keyTimes: [0, 3.5, 6.4, 9.4],
+  touchdown: { dome: 1.8, rocket: 2.6, trader: 3.5, decor: 4.2, cable: 5.6, pad: 7.6 },
+  captionTimes: [0.3, 3.2, 7.2],
+  keyTimes: [0, 2.2, 4.6, 7.6, 10.2],
+  // Join the pass where the dome drops at the same spot as in the full opening.
+  carrierLead: 2.2,
 };
 
 /** Kinds that grow in place instead of dropping from the sky. */
@@ -101,35 +115,36 @@ interface ScheduledProp {
 }
 
 /** Camera keyframes around the base; all stay high and look down so no rock can block the view. */
-function keyframes(base: Vector3, full: boolean, gameplay: CameraShot, distanceScale: number): CameraShot[] {
+function keyframes(base: Vector3, landing: Vector3, carrierStart: Vector3, gameplay: CameraShot, distanceScale: number): CameraShot[] {
   const at = (x: number, y: number, z: number) => base.clone().add(new Vector3(x, y, z));
-  const opening: CameraShot[] = full
-    ? [
-        // Opening: level with the carrier, which the camera tracks (see placeCamera), stars above the horizon.
-        { position: at(-6, 33, 26), target: carrierAt(base, 0, new Vector3()) },
-        // High above the base (never past the edge mountains) so the carrier and the ground share the frame.
-        { position: at(-8, 38, 24), target: at(-4, 14, -6) },
-      ]
-    : [{ position: at(-16, 30, 30), target: at(0, 2, -6) }];
-  const shots = [...opening, { position: at(10, 23, 25), target: at(0, 0, -6) }, { position: at(5, 16, 17), target: at(0, 0.5, -1) }];
+  const near = (x: number, y: number, z: number) => landing.clone().add(new Vector3(x, y, z));
+  const shots: CameraShot[] = [
+    // Level with the carrier, which the camera tracks (see placeCamera), stars above the horizon.
+    { position: at(-6, 33, 26), target: carrierStart },
+    // High above the base (never past the edge mountains) so the carrier and the ground share the frame.
+    { position: at(-8, 38, 24), target: at(-4, 14, -6) },
+    { position: at(10, 23, 25), target: at(0, 0, -6) },
+    // Down to where the player's craft lands.
+    { position: near(5, 16, 17), target: near(0, 1.5, -1) },
+  ];
   for (const shot of shots) shot.position.sub(shot.target).multiplyScalar(distanceScale).add(shot.target);
   return [...shots, gameplay];
 }
 
-/** Scripted arrival: a carrier drops the base piece by piece, then the player's pod lands. */
+/** Scripted arrival: Zix's carrier drops the base piece by piece, then the player's craft lands. */
 export function createIntro(options: IntroOptions): Intro {
   const timing = options.full ? FULL : ARRIVAL;
   let time = 0;
   let touchedDown = false;
   let landHandler: (at: Vector3, heavy: boolean) => void = () => undefined;
   const shot: CameraShot = { position: new Vector3(), target: new Vector3() };
-  const shots = keyframes(options.base, options.full, options.gameplayShot, options.distanceScale);
+  const descender = options.descender;
+  const shipAt = (t: number, out: Vector3): Vector3 => carrierAt(options.base, t + timing.carrierLead, out);
+  const shots = keyframes(options.base, descender.spot, shipAt(0, new Vector3()), options.gameplayShot, options.distanceScale);
   const positionCurve = new CatmullRomCurve3(shots.map((s) => s.position), false, "centripetal");
   const targetCurve = new CatmullRomCurve3(shots.map((s) => s.target), false, "centripetal");
   const flameGeometry = new ConeGeometry(0.6, 1.6, 12, 1, true);
   const flameMaterial = glow(0xffa040, 4);
-  const lander = options.lander;
-  const landing = options.podSpot.clone();
   const scratch = new Vector3();
 
   const counts = new Map<DropKind, number>();
@@ -139,27 +154,20 @@ export function createIntro(options: IntroOptions): Intro {
     return { prop, release: null, final: prop.object.position.clone(), finalScale: prop.object.scale.clone(), touchdown: timing.touchdown[prop.kind] + index * STAGGER_SECONDS, flame: null, landed: false };
   });
 
-  const mothership = options.full ? mothershipModel() : null;
-  if (mothership) {
-    options.scene.add(mothership.root);
-  }
-
-  const shipAt = (t: number, out: Vector3): Vector3 => carrierAt(options.base, t, out);
+  const mothership = mothershipModel();
+  options.scene.add(mothership.root);
 
   // Dropped props leave from the carrier's bay at the moment they start to fall.
-  if (mothership) {
-    for (const item of schedule) {
-      if (GROW_KINDS.has(item.prop.kind)) continue;
-      item.release = shipAt(item.touchdown - timing.fallSeconds, new Vector3()).add(new Vector3(0, -CARRIER.bayDrop, 0));
-    }
+  for (const item of schedule) {
+    if (GROW_KINDS.has(item.prop.kind)) continue;
+    item.release = shipAt(item.touchdown - timing.fallSeconds, new Vector3()).add(new Vector3(0, -CARRIER.bayDrop, 0));
   }
 
   function placeMothership(): void {
-    if (!mothership) return;
     shipAt(time, mothership.root.position);
     // A gentle bank as it slows over the base.
     mothership.root.rotation.set(0, 0, Math.sin(time * 0.5) * 0.03);
-    mothership.root.visible = time < CARRIER.passSeconds + 1.5;
+    mothership.root.visible = time + timing.carrierLead < CARRIER.passSeconds + 1.5;
   }
 
   function clearFlame(item: ScheduledProp): void {
@@ -187,17 +195,14 @@ export function createIntro(options: IntroOptions): Intro {
     if (time < start) return;
     if (time < item.touchdown) {
       const k = (time - start) / timing.fallSeconds;
-      if (item.release) {
-        // Drift out from under the carrier and fall faster and faster, braking only at the very end.
-        const across = 1 - (1 - k) ** 2;
-        object.position.set(
-          item.release.x + (item.final.x - item.release.x) * across,
-          item.final.y + (item.release.y - item.final.y) * (1 - k ** 1.6),
-          item.release.z + (item.final.z - item.release.z) * across,
-        );
-      } else {
-        object.position.set(item.final.x, item.final.y + timing.dropHeight * (1 - k) ** 2, item.final.z);
-      }
+      const release = item.release ?? item.final.clone().add(new Vector3(0, timing.dropHeight, 0));
+      // Drift out from under the carrier and fall faster and faster, braking only at the very end.
+      const across = 1 - (1 - k) ** 2;
+      object.position.set(
+        release.x + (item.final.x - release.x) * across,
+        item.final.y + (release.y - item.final.y) * (1 - k ** 1.6),
+        release.z + (item.final.z - release.z) * across,
+      );
       object.scale.copy(item.finalScale);
       if (k > RETRO_FROM && !item.flame) {
         item.flame = new Mesh(flameGeometry, flameMaterial);
@@ -219,17 +224,18 @@ export function createIntro(options: IntroOptions): Intro {
     object.scale.set(item.finalScale.x * (1 + Math.sin(b * Math.PI) * 0.08), item.finalScale.y * (1 - Math.sin(b * Math.PI) * 0.14), item.finalScale.z * (1 + Math.sin(b * Math.PI) * 0.08));
   }
 
-  function placeLander(): void {
+  function placeDescender(): void {
     const start = timing.podTouchdown - timing.fallSeconds * 1.6;
     const k = Math.min(1, Math.max(0, (time - start) / (timing.fallSeconds * 1.6)));
-    lander.root.visible = time >= start;
-    lander.root.position.set(landing.x + (1 - k) * 3, landing.y + timing.dropHeight * (1 - ease(k)) ** 1.4, landing.z - (1 - k) * 2);
-    lander.root.rotation.z = (1 - k) * 0.25;
-    lander.flame.visible = time >= start && k < 1;
-    lander.flame.scale.set(1, 0.8 + Math.random() * 0.4 + (1 - k), 1);
+    const drift = descender.drift ? 1 - k : 0;
+    descender.object.visible = time >= start;
+    descender.object.position.set(descender.rest.x + drift * 3, descender.rest.y + timing.dropHeight * (1 - ease(k)) ** 1.4, descender.rest.z - drift * 2);
+    descender.object.rotation.z = drift * 0.25;
+    descender.flame.visible = time >= start && k < 1;
+    descender.flame.scale.set(1, 0.8 + Math.random() * 0.4 + (1 - k), 1);
     if (!touchedDown && k >= 1) {
       touchedDown = true;
-      landHandler(landing.clone(), false);
+      landHandler(descender.spot.clone(), !descender.drift);
     }
   }
 
@@ -245,17 +251,17 @@ export function createIntro(options: IntroOptions): Intro {
     positionCurve.getPoint(u, shot.position);
     targetCurve.getPoint(u, shot.target);
     // While the carrier is the subject, keep it framed, then let go as the camera tips down to the base.
-    if (mothership && segment === 0) shot.target.lerp(shipAt(time, scratch), 1 - local);
+    if (segment === 0) shot.target.lerp(shipAt(time, scratch), 1 - local);
   }
 
   function cleanUp(): void {
     for (const item of schedule) finish(item);
-    mothership?.root.removeFromParent();
+    mothership.root.removeFromParent();
     flameGeometry.dispose();
   }
 
   for (const item of schedule) placeProp(item);
-  placeLander();
+  placeDescender();
 
   return {
     update(dt) {
@@ -263,7 +269,7 @@ export function createIntro(options: IntroOptions): Intro {
       time += dt;
       placeMothership();
       for (const item of schedule) placeProp(item);
-      placeLander();
+      placeDescender();
       placeCamera();
       if (time >= timing.duration) cleanUp();
       return shot;
@@ -285,10 +291,10 @@ export function createIntro(options: IntroOptions): Intro {
       time = timing.duration;
       cleanUp();
       touchedDown = true;
-      lander.root.visible = true;
-      lander.root.position.copy(landing);
-      lander.root.rotation.z = 0;
-      lander.flame.visible = false;
+      descender.object.visible = true;
+      descender.object.position.copy(descender.rest);
+      descender.object.rotation.z = 0;
+      descender.flame.visible = false;
     },
     done: () => time >= timing.duration,
   };

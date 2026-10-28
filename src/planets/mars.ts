@@ -1,9 +1,14 @@
+import { rocketPartsText } from "./text";
 import type { PlanetDef } from "./types";
+
+const ROCKET_PARTS = { engine: 8, wire: 14 } as const;
+/** Your rocket lands east of the dome and is refitted where it stands. */
+const ROCKET = { x: 11, z: -5, pad: { x: 11, z: -1.3 }, parts: ROCKET_PARTS } as const;
 
 /**
  * Mars. The base mirrors the Moon's: copper lies west of the dome and Zix trades to the east.
- * A rockslide blocks the canyon to the north, where dry ice, the fuel synthesizer, the engine
- * works and the rocket wait. Dust storms are the planet's hazard.
+ * Your rocket lands east of the base. A rockslide blocks the canyon to the north, where dry ice,
+ * the fuel synthesizer and the engine works wait. Dust storms are the planet's hazard.
  */
 export const MARS: PlanetDef = {
   id: "mars",
@@ -23,11 +28,12 @@ export const MARS: PlanetDef = {
   bounds: { minX: -16, maxX: 16, minZ: -34, maxZ: 9 },
   ridge: { z: -11, gapHalfWidth: 2.4, unlockId: "canyon" },
   dome: { x: 0, z: 3, radius: 3.6 },
-  spawn: { x: 0, z: 3 },
+  // You step out of your rocket.
+  spawn: { x: 9.6, z: 0.6 },
   sellPad: { x: 5.4, z: 1.2 },
   trader: { x: 5.4, z: -0.9 },
   workshop: { x: 5.5, z: 6.2 },
-  rocket: { x: 0, z: -29.5, pad: { x: 0, z: -25.7 }, parts: { engine: 8, wire: 14 } },
+  rocket: ROCKET,
   deposits: [
     { id: "copper-1", item: "copperOre", x: -8.6, z: 3.8, zone: null },
     { id: "copper-2", item: "copperOre", x: -10.6, z: 2.2, zone: null },
@@ -102,8 +108,8 @@ export const MARS: PlanetDef = {
     { text: "Build the fuel synthesizer", target: { x: 7, z: -15.5 }, check: { kind: "unlocked", id: "fuelSynth" } },
     { text: "Build the engine works", target: { x: -7, z: -18 }, check: { kind: "unlocked", id: "engineWorks" } },
     { text: "Feed wire and fuel cells into the engine works", target: { x: -9.2, z: -16.4 }, check: { kind: "processed", machineId: "engineWorks", count: 1 } },
-    { text: "Load the rocket: 8 engines and 14 copper wire", target: { x: 0, z: -25.7 }, check: { kind: "rocketComplete" } },
-    { text: "Stand on the launch pad to lift off", target: { x: 0, z: -25.7 }, check: { kind: "launched" } },
+    { text: rocketPartsText("Refit your rocket", ROCKET_PARTS), target: ROCKET.pad, check: { kind: "rocketComplete" } },
+    { text: "Stand on the launch pad to lift off", target: ROCKET.pad, check: { kind: "launched" } },
   ],
   storms: { after: "wireMill" },
   scenery: {
@@ -145,7 +151,7 @@ export const MARS: PlanetDef = {
   music: "mars",
   arrivalCaptions: [
     "Touchdown on Mars. Thin air, red dust and a sky the colour of rust.",
-    "Copper lies to the west and dry ice beyond the canyon. Zix followed you here, of course.",
-    "Build rocket engines and push on to the ice moon. Get to the dome when a dust storm rolls in.",
+    "Zix got here first and dropped a new base. Copper lies west, dry ice beyond the canyon.",
+    "Refit your rocket with new engines and wiring for the ice moon. Shelter in the dome from dust storms.",
   ],
 };

@@ -1,7 +1,7 @@
 import { PerspectiveCamera, Scene, Vector3 } from "three";
 import type { AudioKit } from "./audio";
 import { BOOST, PADS, type ItemId } from "./config";
-import { followShot, launchShot } from "./camera";
+import { aimLift, followShot, launchShot } from "./camera";
 import { createFeedback } from "./feedback";
 import type { Hud } from "./hud";
 import { activePanel, buyFromPanel, toggleFromPanel } from "./panels";
@@ -19,6 +19,7 @@ import { createDronesView } from "./view/drones";
 import { createEffects } from "./view/fx";
 import { ItemPool } from "./view/items";
 import { createRenderPipeline, disposeScene, enableShadows } from "./view/render";
+import { SHIP_REST_HEIGHT } from "./view/rocket";
 import { landerModel } from "./view/structures";
 import { buildWorld } from "./view/world";
 
@@ -27,8 +28,6 @@ const CAMERA_OFFSET = new Vector3(0, 11.5, 8.2);
 const PORTRAIT_ZOOM = 1.45;
 /** Cinematic shots pull back further on portrait screens so the carrier and the base fit. */
 const PORTRAIT_INTRO_DISTANCE = 1.7;
-/** How far the camera aims past the player while a bottom-sheet panel is open on a small screen. */
-const PANEL_LIFT = 2.4;
 const COMPACT_QUERY = "(max-width: 760px), (max-height: 480px)";
 const LAUNCH_SECONDS = 4.2;
 const LAUNCH_DONE = -2;
@@ -36,7 +35,7 @@ const POD_OFFSET = { x: 1.6, z: -0.9 } as const;
 
 export interface GameOptions {
   playIntro: boolean;
-  /** The long opening with the orbiting carrier; later planets get a shorter arrival. */
+  /** First planet: the long opening, and the player arrives in the scout pod. Later planets: a shorter arrival in the player's own rocket. */
   fullIntro: boolean;
   tutorialDone: boolean;
   seenTips: ReadonlySet<string>;
@@ -79,9 +78,11 @@ export function createGame(canvas: HTMLCanvasElement, state: GameState, quality:
   const drones = createDronesView(scene, pool, state.planet);
   world.onMachineIntake((at, color) => fx.sparks(at, color, quality.tier === "low" ? 2 : 5));
   const podSpot = { x: state.planet.dome.x + POD_OFFSET.x, z: state.planet.dome.z + POD_OFFSET.z };
-  const lander = landerModel();
-  lander.root.position.copy(world.groundAt(podSpot));
-  scene.add(lander.root);
+  const lander = options.fullIntro ? landerModel() : null;
+  if (lander) {
+    lander.root.position.copy(world.groundAt(podSpot));
+    scene.add(lander.root);
+  }
   enableShadows(scene);
   pipeline.applyReflections(scene);
 
@@ -119,8 +120,9 @@ export function createGame(canvas: HTMLCanvasElement, state: GameState, quality:
     intro = createIntro({
       scene,
       props: world.introProps(),
-      lander,
-      podSpot: world.groundAt(podSpot),
+      descender: lander
+        ? { object: lander.root, flame: lander.flame, rest: world.groundAt(podSpot), spot: world.groundAt(podSpot), drift: true }
+        : { object: world.rocket.ship, flame: world.rocket.flame, rest: new Vector3(0, SHIP_REST_HEIGHT, 0), spot: world.groundAt(state.planet.rocket), drift: false },
       base: world.groundAt(state.planet.dome),
       gameplayShot: { position: ground.clone().add(CAMERA_OFFSET.clone().multiplyScalar(startZoom)), target: ground.clone().add(new Vector3(0, 0.6, 0)) },
       captions: state.planet.arrivalCaptions,
@@ -148,7 +150,7 @@ export function createGame(canvas: HTMLCanvasElement, state: GameState, quality:
 
   function updateCamera(dt: number): void {
     if (launchTimer === LAUNCH_DONE || (intro && !intro.done())) return;
-    lift += ((panelOpen && compact.matches ? PANEL_LIFT * zoom : 0) - lift) * Math.min(1, dt * 4);
+    lift += (aimLift(state, panelOpen && compact.matches, zoom) - lift) * Math.min(1, dt * 4);
     shake = launchTimer >= 0
       ? launchShot(camera, cameraTarget, world.groundAt(state.planet.rocket), world.rocket.ship.getWorldPosition(new Vector3()), dt, shake)
       : followShot(camera, cameraTarget, state.player, CAMERA_OFFSET.clone().multiplyScalar(zoom), lift, dt, shake);
@@ -161,7 +163,7 @@ export function createGame(canvas: HTMLCanvasElement, state: GameState, quality:
     world.rocket.flame.visible = true;
     world.rocket.flame.scale.set(1, 1 + Math.sin(time * 40) * 0.15, 1);
     const rise = Math.max(0, launchTimer - 0.6);
-    world.rocket.ship.position.y = 0.6 + rise * rise * 3;
+    world.rocket.ship.position.y = SHIP_REST_HEIGHT + rise * rise * 3;
     if (launchTimer < 1.2) shake = 0.25;
     if (Math.random() < 0.6) fx.dust(world.groundAt(state.planet.rocket).add(new Vector3(0, 0.3, 0)), 2, 0xc9c4d6);
     if (launchTimer >= LAUNCH_SECONDS) {

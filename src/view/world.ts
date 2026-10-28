@@ -4,7 +4,7 @@ import type { PlanetDef, Point, UnlockKind } from "../planets/types";
 import type { HologramIcon } from "./holograms";
 import type { DropProp } from "../intro";
 import { isPadAvailable } from "../sim/economy";
-import { distance, rocketComplete, type GameState } from "../sim/state";
+import { distance, isRocketReachable, rocketComplete, type GameState } from "../sim/state";
 import { bakeStatic } from "./bake";
 import { buildDecor } from "./decor";
 import { depositModel, syncDeposit, type DepositModel } from "./deposits";
@@ -14,7 +14,8 @@ import { createGuide, createPilesView } from "./markers";
 import { merchantModel, type MerchantModel } from "./merchant";
 import { createPad, type PadView } from "./pads";
 import { createStormView, type StormView } from "./storm";
-import { domeModel, rocketModel, workshopModel, type RocketModel } from "./structures";
+import { rocketModel, type RocketModel } from "./rocket";
+import { domeModel, workshopModel } from "./structures";
 import { buildTerrain, heightAt } from "./terrain";
 
 const SHADOW_EXTENT = 16;
@@ -130,8 +131,8 @@ export function buildWorld(scene: Scene, state: GameState, pool: ItemPool, shado
   let ridgeSinking = false;
   const playerPosition = new Vector3();
 
-  function syncRocket(time: number): void {
-    rocketPad.root.visible = state.unlocked.has(planet.ridge.unlockId);
+  function syncRocket(time: number, dt: number): void {
+    rocketPad.root.visible = isRocketReachable(state);
     const parts = Object.entries(planet.rocket.parts) as Array<[ItemId, number]>;
     const detail = parts.map(([item, needed]) => `${ITEMS[item].plural} ${state.rocket[item]}/${needed}`).join("  ·  ");
     if (rocketComplete(state)) rocketPad.label.set("READY TO LAUNCH", "Stand here to lift off", "ready");
@@ -140,6 +141,7 @@ export function buildWorld(scene: Scene, state: GameState, pool: ItemPool, shado
     const filled = parts.reduce((sum, [item]) => sum + state.rocket[item], 0) / parts.reduce((sum, [, needed]) => sum + needed, 0);
     rocketPad.setProgress(filled);
     rocket.windowMaterial.emissiveIntensity = rocketComplete(state) ? 2 + Math.sin(time * 4) : 0.6 + filled;
+    rocket.setBuild(parts.map(([item, needed]) => ({ item, fraction: Math.min(1, state.rocket[item] / needed) })), rocketComplete(state), dt);
   }
 
   function syncPads(time: number): void {
@@ -237,7 +239,7 @@ export function buildWorld(scene: Scene, state: GameState, pool: ItemPool, shado
     sync(_state, dt, time) {
       machines.sync(state, time, dt);
       storm.sync(state, dt, time);
-      syncRocket(time);
+      syncRocket(time, dt);
       syncPads(time);
       syncDeposits(time);
       syncGuide(state, time);

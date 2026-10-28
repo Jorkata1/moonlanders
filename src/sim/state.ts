@@ -197,6 +197,11 @@ export function isStormRaging(state: GameState): boolean {
   return state.storm.phase === "raging";
 }
 
+/** The launch pad can be used: it is on the near side of the ridge, or the way through is open. */
+export function isRocketReachable(state: GameState): boolean {
+  return state.planet.rocket.pad.z > state.planet.ridge.z || state.unlocked.has(state.planet.ridge.unlockId);
+}
+
 export function rocketComplete(state: GameState): boolean {
   return Object.entries(state.planet.rocket.parts).every(([item, needed]) => state.rocket[item as ItemId] >= (needed ?? 0));
 }

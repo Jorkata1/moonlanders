@@ -1,7 +1,19 @@
 import { Vector3, type PerspectiveCamera } from "three";
+import { PADS } from "./config";
+import { distance, type GameState } from "./sim/state";
 
 const FOLLOW_RATE = 6;
+/** How far the camera aims past the player while a bottom-sheet panel is open on a small screen. */
+const PANEL_LIFT = 2.4;
+/** How far the camera aims north of the player on the launch pad, so the rocket being loaded stays in view. */
+const ROCKET_FOCUS = 2.2;
 const LAUNCH_OFFSET = new Vector3(7, 2.2, 9);
+
+/** The `lift` for followShot: above an open bottom sheet, or towards the rocket from its pad. */
+export function aimLift(state: GameState, sheetOpen: boolean, zoom: number): number {
+  if (sheetOpen) return PANEL_LIFT * zoom;
+  return distance(state.player, state.planet.rocket.pad) <= PADS.radius + 1 ? -ROCKET_FOCUS * zoom : 0;
+}
 
 /**
  * Normal play: trail the player from above and behind. Returns the remaining shake.

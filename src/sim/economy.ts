@@ -2,7 +2,7 @@ import { BOOST, DEPOSIT, ITEMS, MACHINE, PADS, PLAYER, UPGRADES, capacityFor, mi
 import { takeFromDeposit } from "./orefall";
 import type { MachineDef, UnlockDef } from "../planets/types";
 import type { Emit } from "./events";
-import { distance, isAvailable, rocketComplete, rocketNeeds, type DepositState, type GameState } from "./state";
+import { distance, isAvailable, isRocketReachable, rocketComplete, rocketNeeds, type DepositState, type GameState } from "./state";
 
 export function boostFactor(state: GameState): number {
   return state.boostSeconds > 0 ? BOOST.multiplier : 1;
@@ -136,7 +136,7 @@ function transferOnce(state: GameState, emit: Emit): boolean {
     }
   }
 
-  if (state.unlocked.has(planet.ridge.unlockId) && onPad(planet.rocket.pad)) {
+  if (isRocketReachable(state) && onPad(planet.rocket.pad)) {
     const index = topIndex(player.carry, (item) => rocketNeeds(state, item) > 0);
     if (index >= 0) {
       const item = player.carry.splice(index, 1)[0] as ItemId;

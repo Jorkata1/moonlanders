@@ -1,4 +1,7 @@
+import { rocketPartsText } from "./text";
 import type { PlanetDef } from "./types";
+
+const ROCKET_PARTS = { plate: 23, water: 15 } as const;
 
 /**
  * The Moon. Players start inside the dome in the south, mine iron to the east, and clear
@@ -26,7 +29,7 @@ export const MOON: PlanetDef = {
   sellPad: { x: -5.4, z: 1.2 },
   trader: { x: -5.4, z: -0.9 },
   workshop: { x: -5.5, z: 6.2 },
-  rocket: { x: -8, z: -21, pad: { x: -8, z: -17.2 }, parts: { plate: 23, water: 15 } },
+  rocket: { x: -8, z: -21, pad: { x: -8, z: -17.2 }, parts: ROCKET_PARTS },
   deposits: [
     { id: "ore-1", item: "ironOre", x: 8.6, z: 3.8, zone: null },
     { id: "ore-2", item: "ironOre", x: 10.6, z: 2.2, zone: null },
@@ -87,7 +90,7 @@ export const MOON: PlanetDef = {
     { text: "Clear the path to the north", target: { x: 0, z: -8.2 }, check: { kind: "unlocked", id: "path" } },
     { text: "Hire the ore robot to feed the smelter", target: { x: 9.6, z: -5.6 }, check: { kind: "unlocked", id: "robot-smelter" } },
     { text: "Build the water purifier", target: { x: 6.5, z: -17.5 }, check: { kind: "unlocked", id: "purifier" } },
-    { text: "Load the rocket: 25 plates and 16 water tanks", target: { x: -8, z: -17.2 }, check: { kind: "rocketComplete" } },
+    { text: rocketPartsText("Load the rocket", ROCKET_PARTS), target: { x: -8, z: -17.2 }, check: { kind: "rocketComplete" } },
     { text: "Stand on the launch pad to lift off", target: { x: -8, z: -17.2 }, check: { kind: "launched" } },
   ],
   storms: null,
@@ -129,7 +132,7 @@ export const MOON: PlanetDef = {
   music: "moon",
   arrivalCaptions: [
     "Year 2187. Your scout pod is running on fumes.",
-    "The only way home is forward: rebuild a rocket and hop from world to world.",
-    "First stop, the Moon. Mine it, build on it, and get off this rock, pioneer.",
+    "Zix, a travelling trader, drops you a starter base and a bare rocket frame. On credit, of course.",
+    "Mine, build and sell to finish the rocket, then hop from world to world. First stop: the Moon.",
   ],
 };
