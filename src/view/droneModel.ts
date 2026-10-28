@@ -1,9 +1,9 @@
 import { CylinderGeometry, Group, SphereGeometry, TorusGeometry, type MeshStandardMaterial } from "three";
-import { bakeStatic } from "../bake";
-import { box, glow, mesh, surface } from "../materials";
+import { bakeStatic } from "./bake";
+import { box, glow, mesh, surface } from "./materials";
 import { FINISH, lathe } from "./kit";
 
-export interface DroneModelV2 {
+export interface DroneModel {
   root: Group;
   body: Group;
   rotors: Group[];
@@ -35,7 +35,7 @@ function duct(body: Group, x: number, z: number, shell: MeshStandardMaterial): G
 }
 
 /** The new cargo drone: a gold teardrop body, four ducted fans, an underglow ring and a claw cradle. */
-export function droneModelV2(): DroneModelV2 {
+export function droneModel(): DroneModel {
   const root = new Group();
   const body = new Group();
   root.add(body);

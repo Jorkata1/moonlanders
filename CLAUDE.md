@@ -46,27 +46,34 @@ src/
     terrain.ts        heightAt(), the levelled ground under buildings, the three-row boulder ridge, rocks, stars
     deposits.ts       carbon, clay, iron ore and Helium X rock models
     items.ts          carried/stacked item models and the item pool
-    machineParts.ts   shared machine fittings: plinth, status lamp tower, fan, input belt and hopper, output hatch and chute
-    machines.ts       smelter and helium refinery models
+    kit.ts            model-building helpers and finishes: lathe bodies, pipes, bolt rings, plating/hazard/fabric textures
+    machineParts.ts   shared machine fittings: plinth, status lamp tower, fan, output hatch and chute, console, smoke
+    feeders.ts        how raw material enters a machine: the smelter's skip hoist and the refinery's crystal crusher
+    smelter.ts        arc-furnace smelter: riveted drum, glowing pour slit, roof electrodes, stamping press, stack
+    refinery.ts       helium refinery: plasma reactor with a glass belt, distillation column, cell-filling carousel
     machineViews.ts   machine models, input/output pads and trays, items riding the belts in and the chute out
     orderSite.ts      the active order: hologram ghost of the build with a scan ring, delivery pad and materials board
     materialsBoard.ts canvas board listing each material and how much has arrived
     assemble.ts       the build-up animation when an order completes
     workerSites.ts    robot and drone docks with their stockpile stacks and labels
-    suitStation.ts    the suit station model
+    suitStation.ts    the suit station: round bay, lit shell, spare suit, sweeping scanner ring, servo arms
+    workbench.ts      the workbench: steel bench, pegboard, tool chest, lamp, hologram projector, jointed robot arm
     drillRig.ts       the mining drill: boom extends into the ridge while boring
     pads.ts           sci-fi hex pads: LED ring (progress on pay pads), hologram icon, price board
     holograms.ts      the spinning hologram icons above pads
     decor.ts          solar farm, antenna, lamps, crates, fuel tanks, crash debris and cables; each piece is its own root so the intro can unfold it
-    drones.ts         cargo drone model and its dock
-    rocket.ts         the crashed rocket: scorch marks, a jump-drive ring whose segments light up as materials arrive, scaffold, smoke
+    droneModel.ts     the cargo drone: teardrop body, ducted fans, underglow ring, claw cradle
+    drones.ts         cargo drone animation, stacks and dock
+    rocket.ts         the crashed rocket: plated hull, porthole, fins, landing legs, engine bell, a jump-drive ring that lights up as materials arrive, scaffold, smoke
     storm.ts          dust-storm fog and blowing grains
-    characters.ts     astronaut, robot rover, hand-held laser drill
+    characters.ts     hand-held laser drill and the astronaut/robot model interfaces
+    astronaut.ts      the astronaut: quilted suit, gold visor, helmet lamps, gloves, moon boots, life-support pack
+    robot.ts          the mining rover: treaded wheels on bogies, two-eyed head, jointed drill arm, cargo bin
     beam.ts           the flexible laser: a lagging, rippling tube that goes thin and blue while warming up, thick and orange once locked
     actors.ts         per-frame player/robot animation (robot looks per stage), drill beams
     fx.ts             flying items, sparks, rock chips, dust, falling ore meteorites, floating text
     bake.ts           merges static meshes per material to cut draw calls
-    render.ts         renderer, ACES tone mapping, bloom, shadows, reflections
+    render.ts         renderer, ACES tone mapping, ambient occlusion, bloom, colour grade and vignette, shadows, reflections
   game.ts             main loop: input → step → feedback → view sync → render; tutorial, launch
   gameIntro.ts        wires the crash-landing intro into the game (camera, landings, smoke, shake)
   intro.ts            the crash-landing cinematic: the burning rocket comes down beyond the ridge, the escape pod lands, the kit unfolds
@@ -90,6 +97,7 @@ test/
   harness.ts          renders the real scene after N bot-seconds, for visual review in a headless browser
   *-entry.ts          test builds that spawn the player somewhere specific (via test/build-entry.mjs)
   stepped-entry.ts    review build: fixed 1/30 s frames that a headless browser can hold for exact screenshots; `?spawn=x,z` picks where the player starts
+  showcase-entry.ts   renders one model at a time (show(name, view)) for close-up review of models
 ```
 
 ## How to change things

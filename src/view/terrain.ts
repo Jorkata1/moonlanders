@@ -1,7 +1,6 @@
 import {
   CanvasTexture,
   MeshStandardMaterial,
-  RepeatWrapping,
   SRGBColorSpace,
   BufferAttribute,
   BufferGeometry,
@@ -21,7 +20,7 @@ import {
   Vector3,
 } from "three";
 import type { PlanetDef, Point } from "../planets/types";
-import { flat, surface } from "./materials";
+import { flat } from "./materials";
 import { regolithNormalTexture, regolithTexture } from "./textures";
 
 const GROUND_SIZE = 110;

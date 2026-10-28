@@ -1,9 +1,9 @@
-import { CylinderGeometry, DoubleSide, Group, SphereGeometry, Vector3, type MeshStandardMaterial } from "three";
-import { box, glow, mesh, surface } from "../materials";
+import { CylinderGeometry, DoubleSide, Group, Vector3, type MeshStandardMaterial } from "three";
+import { box, mesh, surface } from "./materials";
 import { FINISH, hazardTexture, pipe } from "./kit";
 
-/** How raw ore gets into the smelter: the funnel it had, or one of three redesigns. */
-export type FeederKind = "funnel" | "hatch" | "hoist" | "crusher";
+/** How raw material gets into a machine: a skip hoist (smelter) or a crusher (refinery). */
+export type FeederKind = "hoist" | "crusher";
 
 export interface Feeder {
   tray: Group;
@@ -37,42 +37,6 @@ function trayAt(root: Group, at: Vector3): Group {
   tray.userData.dynamic = true;
   root.add(tray);
   return tray;
-}
-
-/** Enclosed feeder: the belt climbs into a steel housing behind a rubber strip curtain, ducted into the drum. */
-function hatchFeeder(root: Group, belt: MeshStandardMaterial): Feeder {
-  const mouth = new Vector3(-1.32, 1.28, 0.32);
-  conveyor(root, belt, PAD_FOOT, mouth);
-  root.add(box(0.72, 0.7, 0.66, FINISH.shell(), -1.32, 1.38, -0.02, 0.08));
-  root.add(box(0.76, 0.1, 0.7, FINISH.orange(), -1.32, 1.76, -0.02, 0.03));
-  root.add(box(0.74, 0.08, 0.04, surface({ map: hazardTexture(), roughness: 0.5 }), -1.32, 1.68, 0.32, 0.01));
-  // Rubber strip curtain over the opening; the strips sway while ore pushes through.
-  const curtain = new Group();
-  curtain.userData.dynamic = true;
-  curtain.position.set(-1.32, 1.6, 0.33);
-  const strips = Array.from({ length: 6 }, (_, i) => {
-    const strip = box(0.075, 0.42, 0.015, FINISH.rubber(), -0.2 + i * 0.08, -0.21, 0, 0.004);
-    const hinge = new Group();
-    hinge.position.x = strip.position.x;
-    strip.position.x = 0;
-    hinge.add(strip);
-    curtain.add(hinge);
-    return hinge;
-  });
-  root.add(curtain);
-  root.add(box(0.36, 0.36, 0.5, FINISH.gunmetal(), -1.0, 1.42, -0.32, 0.04));
-  const light = glow(0x5df2a0, 0.4).clone();
-  root.add(mesh(new SphereGeometry(0.045, 10, 8), light, -1.05, 1.86, 0.18));
-  const tray = trayAt(root, new Vector3(-1.32, 1.12, -0.05));
-  const path = [PAD_FOOT.clone().add(new Vector3(0, 0.1, 0)), mouth.clone().add(new Vector3(0, 0.1, 0)), new Vector3(-1.32, 1.3, -0.05), new Vector3(-1.32, 1.15, -0.05)];
-  return {
-    tray,
-    path,
-    update(time, _dt, working) {
-      strips.forEach((hinge, i) => (hinge.rotation.x = working ? -Math.max(0, Math.sin(time * 6 + i * 0.7)) * 0.5 : 0));
-      light.emissiveIntensity = working ? 2.4 : 0.4;
-    },
-  };
 }
 
 /** Skip hoist: the belt tips ore into a bucket that rides up twin rails and empties into the furnace roof. */
@@ -149,21 +113,6 @@ function crusherFeeder(root: Group, belt: MeshStandardMaterial): Feeder {
   };
 }
 
-/** The original funnel, kept for comparison. */
-function funnelFeeder(root: Group, belt: MeshStandardMaterial): Feeder {
-  const hopper = new Vector3(-1.3, 1.4, 0.05);
-  conveyor(root, belt, PAD_FOOT, new Vector3(-1.35, 1.1, 0.4));
-  const funnel = FINISH.chrome().clone();
-  funnel.side = DoubleSide;
-  root.add(mesh(new CylinderGeometry(0.55, 0.25, 0.55, 16, 1, true), funnel, hopper.x, hopper.y, hopper.z));
-  root.add(pipe([[-1.3, 1.15, 0.05], [-1.1, 1.25, -0.05], [-0.9, 1.4, -0.25]], 0.09, FINISH.gunmetal()));
-  const tray = trayAt(root, new Vector3(-1.3, 1.2, 0.05));
-  return { tray, path: [PAD_FOOT.clone(), new Vector3(-1.35, 1.2, 0.4), new Vector3(-1.3, 1.95, 0.05), new Vector3(-1.3, 1.25, 0.05)], update: () => undefined };
-}
-
 export function buildFeeder(kind: FeederKind, root: Group, belt: MeshStandardMaterial): Feeder {
-  if (kind === "hatch") return hatchFeeder(root, belt);
-  if (kind === "hoist") return hoistFeeder(root, belt);
-  if (kind === "crusher") return crusherFeeder(root, belt);
-  return funnelFeeder(root, belt);
+  return kind === "hoist" ? hoistFeeder(root, belt) : crusherFeeder(root, belt);
 }

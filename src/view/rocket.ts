@@ -1,10 +1,9 @@
-import { BoxGeometry, ConeGeometry, CylinderGeometry, Group, LatheGeometry, Mesh, SphereGeometry, TorusGeometry, Vector2, type MeshStandardMaterial } from "three";
+import { BoxGeometry, ConeGeometry, CylinderGeometry, Group, Mesh, SphereGeometry, TorusGeometry, type MeshStandardMaterial } from "three";
 import { bakeStatic } from "./bake";
 import { emitter } from "./machineParts";
 import { LOOK, box, glow, mesh, surface } from "./materials";
+import { FINISH, lathe, pipe, platingTexture } from "./kit";
 
-/** Hull outline (radius, height), bottom to tip. */
-const PROFILE: readonly (readonly [number, number])[] = [[0, 0], [0.7, 0], [0.85, 0.3], [0.9, 1.4], [0.88, 2.6], [0.78, 3.4], [0.55, 4.1], [0.25, 4.6], [0, 4.8]];
 const DRIVE_SEGMENTS = 12;
 const DRIVE_HEIGHT = 0.75;
 const DRIVE_RADIUS = 1.12;
@@ -27,26 +26,43 @@ export interface RocketModel {
 
 function hull(windowMaterial: MeshStandardMaterial): Group {
   const body = new Group();
-  body.add(mesh(new LatheGeometry(PROFILE.map(([r, y]) => new Vector2(r, y)), 32), LOOK.white()));
-  body.add(mesh(new CylinderGeometry(0.9, 0.9, 0.3, 32), LOOK.orange(), 0, 1.2, 0));
-  body.add(mesh(new ConeGeometry(0.4, 0.55, 32), LOOK.orange(), 0, 4.55, 0));
-  for (const y of [2.4, 3.1]) body.add(mesh(new SphereGeometry(0.2, 16, 10), windowMaterial, 0, y, 0.82).rotateX(Math.PI / 2));
+  const plating = surface({ map: platingTexture("rocket", "#f2f4f8", 8, 6), roughness: 0.38, reflective: true, envMapIntensity: 0.5 });
+  plating.map?.repeat.set(2, 2);
+  body.add(lathe([[0.5, -0.05], [0.78, 0.05], [0.88, 0.35], [0.92, 1.4], [0.9, 2.6], [0.8, 3.35], [0.58, 4.05], [0.3, 4.55], [0.12, 4.78], [0, 4.82]], plating, 40));
+  // Orange bands, a black heat-shield skirt and a chrome nose tip.
+  for (const [y, h] of [[1.15, 0.26], [3.05, 0.12]] as const) body.add(mesh(new CylinderGeometry(0.925 - (y > 3 ? 0.07 : 0), 0.925, h, 40), FINISH.orange(), 0, y, 0));
+  body.add(mesh(new CylinderGeometry(0.9, 0.9, 0.3, 40), FINISH.graphite(), 0, 0.2, 0));
+  body.add(lathe([[0.12, 4.74], [0.06, 4.9], [0, 4.98]], FINISH.chrome(), 20));
+  // Porthole with a thick frame, and a row of small cabin lights.
+  body.add(mesh(new SphereGeometry(0.24, 20, 14), windowMaterial, 0, 2.55, 0.8).rotateX(Math.PI / 2));
+  body.add(mesh(new TorusGeometry(0.26, 0.05, 10, 28), FINISH.gunmetal(), 0, 2.55, 0.86));
+  for (const a of [-0.5, -0.25, 0.25, 0.5]) body.add(mesh(new SphereGeometry(0.035, 8, 6), glow(0x9fe8ff, 2), Math.sin(a) * 0.9, 1.9, Math.cos(a) * 0.9));
+  // Swept fins with orange tips and landing legs with footpads.
   for (let i = 0; i < 4; i += 1) {
-    const fin = new Group();
-    fin.add(box(0.08, 1.2, 0.7, LOOK.orange(), 0, 0.6, 0, 0.03));
     const angle = (i / 4) * Math.PI * 2 + Math.PI / 4;
-    fin.position.set(Math.sin(angle) * 0.9, 0, Math.cos(angle) * 0.9);
+    const fin = new Group();
+    const blade = box(0.07, 1.25, 0.62, plating, 0, 0.75, 0.3, 0.03);
+    blade.rotation.x = -0.25;
+    fin.add(blade, box(0.08, 0.3, 0.3, FINISH.orange(), 0, 0.2, 0.52, 0.03));
+    fin.position.set(Math.sin(angle) * 0.82, 0, Math.cos(angle) * 0.82);
     fin.rotation.y = angle;
     body.add(fin);
+    const legAngle = angle + Math.PI / 4;
+    const lx = Math.sin(legAngle);
+    const lz = Math.cos(legAngle);
+    body.add(pipe([[lx * 0.8, 0.9, lz * 0.8], [lx * 1.15, 0.2, lz * 1.15], [lx * 1.25, -0.5, lz * 1.25]], 0.05, FINISH.gunmetal()));
+    body.add(mesh(new CylinderGeometry(0.16, 0.2, 0.06, 16), FINISH.graphite(), lx * 1.25, -0.52, lz * 1.25));
   }
   // Scorch marks from the hard landing.
-  const scorch = surface({ color: 0x2a2624, roughness: 0.95 });
+  const scorch = surface({ color: 0x2a2624, roughness: 0.95, transparent: true, opacity: 0.75 });
   for (const [angle, y, w, h] of [[0.6, 1.9, 0.5, 0.7], [2.4, 2.8, 0.4, 0.5], [4.1, 1.5, 0.6, 0.4]] as const) {
-    const mark = box(w, h, 0.02, scorch, Math.sin(angle) * 0.9, y, Math.cos(angle) * 0.9, 0.01);
+    const mark = box(w, h, 0.02, scorch, Math.sin(angle) * 0.92, y, Math.cos(angle) * 0.92, 0.01);
     mark.rotation.y = angle;
     body.add(mark);
   }
-  body.add(mesh(new CylinderGeometry(0.45, 0.6, 0.35, 20), LOOK.dark(), 0, -0.1, 0));
+  // Engine bell.
+  body.add(lathe([[0.62, -0.62], [0.5, -0.4], [0.32, -0.12], [0.36, 0]], FINISH.gunmetal(), 28));
+  body.add(lathe([[0.55, -0.6], [0.3, -0.12]], glow(0xff8a3a, 0.6), 28));
   return body;
 }
 

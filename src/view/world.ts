@@ -16,7 +16,8 @@ import { createOrderSite } from "./orderSite";
 import { createPad } from "./pads";
 import { rocketModel, type RocketModel } from "./rocket";
 import { createStormView, type StormView } from "./storm";
-import { domeModel, workshopModel } from "./structures";
+import { domeModel } from "./structures";
+import { workbenchModel } from "./workbench";
 import { suitStationModel, type SuitStationModel } from "./suitStation";
 import { buildTerrain, heightAt } from "./terrain";
 import { createWorkerSites } from "./workerSites";
@@ -104,12 +105,12 @@ export function buildWorld(scene: Scene, state: GameState, pool: ItemPool, shado
   at(suitPad.root, planet.suitStation.pad);
   scene.add(suitStation.root, suitPad.root);
 
-  const workbench = workshopModel();
-  at(workbench, planet.workbench);
+  const workbench = workbenchModel();
+  at(workbench.root, planet.workbench);
   const workbenchPad = createPad("workshop", PADS.radius, 2.2, false, "build");
   workbenchPad.label.set("WORKBENCH", "Order builds here");
   at(workbenchPad.root, planet.workbench.pad);
-  scene.add(workbench, workbenchPad.root);
+  scene.add(workbench.root, workbenchPad.root);
 
   const drillBuild = planet.builds.find((b) => b.kind === "drill");
   const drill = drillRigModel();
@@ -135,7 +136,7 @@ export function buildWorld(scene: Scene, state: GameState, pool: ItemPool, shado
   function modelOf(buildId: string): Object3D | null {
     const build = buildDef(planet, buildId);
     if (!build) return null;
-    if (build.kind === "workbench") return workbench;
+    if (build.kind === "workbench") return workbench.root;
     if (build.kind === "drill") return drill.root;
     if ((build.kind === "machine" || build.kind === "machineUpgrade") && build.machineId) return machines.modelOf(build.machineId);
     if (build.kind === "robot" || build.kind === "drone") return workers.dock(build.id)?.root ?? null;
@@ -161,13 +162,12 @@ export function buildWorld(scene: Scene, state: GameState, pool: ItemPool, shado
     suitPad.setActive(onSuit, time);
     suitPad.label.sprite.visible = !onSuit;
     const benchBuilt = state.built.has("workbench");
-    workbench.visible = benchBuilt;
+    workbench.root.visible = benchBuilt;
     workbenchPad.root.visible = benchBuilt;
     const onBench = distance(state.player, planet.workbench.pad) <= PADS.radius;
     workbenchPad.setActive(onBench, time);
     workbenchPad.label.sprite.visible = !onBench;
-    const arm = workbench.getObjectByName("arm");
-    if (arm) arm.rotation.y = Math.sin(time * 0.8) * 0.8;
+    workbench.update(time, dt, onBench);
     drill.root.visible = drillBuild !== undefined && state.built.has(drillBuild.id);
     drill.update(state.boring, time, dt);
   }

@@ -1,11 +1,9 @@
 import {
   CanvasTexture,
   CylinderGeometry,
-  DoubleSide,
   Group,
   MeshStandardMaterial,
   RepeatWrapping,
-  SphereGeometry,
   Sprite,
   SpriteMaterial,
   TorusGeometry,
@@ -39,9 +37,6 @@ export interface Feed {
   path: Vector3[];
 }
 
-const BELT_HALF_LENGTH = 0.7;
-const BELT_TILT = 0.55;
-const BELT_HEIGHT = 0.75;
 
 function puffTexture(): CanvasTexture {
   return canvasTexture("machine-puff", 64, 64, (ctx) => {
@@ -134,41 +129,6 @@ export function base(root: Group): BaseRig {
       fan.rotation.z += dt * (status === "working" ? 14 : 1.5);
     },
   };
-}
-
-/** Belt from the input pad up into the hopper, and the hopper itself. */
-export function intake(root: Group, belt: MeshStandardMaterial): Feed {
-  const hopperZ = 0.05;
-  const beltZ = 0.75;
-  const legs = [1.25, 0.45];
-  const conveyor = new Group();
-  conveyor.add(box(0.5, 0.06, 1.4, belt, 0, 0, 0, 0.01));
-  conveyor.add(box(0.06, 0.14, 1.4, LOOK.steel(), -0.28, 0.03, 0, 0.02));
-  conveyor.add(box(0.06, 0.14, 1.4, LOOK.steel(), 0.28, 0.03, 0, 0.02));
-  for (const z of [-0.66, 0.66]) conveyor.add(mesh(new CylinderGeometry(0.06, 0.06, 0.52, 10), LOOK.steel(), 0, -0.02, z).rotateZ(Math.PI / 2));
-  conveyor.position.set(-1.35, BELT_HEIGHT, beltZ);
-  conveyor.rotation.x = BELT_TILT;
-  root.add(conveyor);
-  for (const z of legs) root.add(box(0.08, 0.7, 0.08, LOOK.steel(), -1.35, 0.35, z, 0.02));
-  const funnelMaterial = LOOK.steel().clone();
-  funnelMaterial.side = DoubleSide;
-  root.add(mesh(new CylinderGeometry(0.55, 0.25, 0.55, 16, 1, true), funnelMaterial, -1.3, 1.4, hopperZ));
-  root.add(mesh(new TorusGeometry(0.55, 0.04, 6, 20), LOOK.orange(), -1.3, 1.67, hopperZ).rotateX(Math.PI / 2));
-  // Intake sensor that blinks as each item passes.
-  root.add(mesh(new SphereGeometry(0.05, 8, 6), glow(0x4de3ff, 2.2), -1.0, 1.72, hopperZ));
-  const tray = new Group();
-  tray.position.set(-1.3, 1.2, hopperZ);
-  tray.userData.dynamic = true;
-  root.add(tray);
-  const rise = Math.sin(BELT_TILT) * BELT_HALF_LENGTH;
-  const run = Math.cos(BELT_TILT) * BELT_HALF_LENGTH;
-  const path = [
-    new Vector3(-1.35, BELT_HEIGHT - rise + 0.1, beltZ + run),
-    new Vector3(-1.35, BELT_HEIGHT + rise + 0.1, beltZ - run),
-    new Vector3(-1.3, 1.95, hopperZ),
-    new Vector3(-1.3, 1.25, hopperZ),
-  ];
-  return { tray, path };
 }
 
 export function outlet(root: Group): Feed {

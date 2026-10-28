@@ -6,7 +6,8 @@ import { distance, type GameState, type MachineState } from "../sim/state";
 import { bakeStatic } from "./bake";
 import { StackView, type ItemPool } from "./items";
 import type { MachineModel, MachineStatus } from "./machineParts";
-import { refineryModel, smelterModel } from "./machines";
+import { refineryModel } from "./refinery";
+import { smelterModel } from "./smelter";
 import { createPad, type PadView } from "./pads";
 
 const MAX_TRAY_ITEMS = 8;

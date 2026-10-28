@@ -1,7 +1,7 @@
 import { CylinderGeometry, Group, PointLight, SphereGeometry, TorusGeometry } from "three";
-import { base, beltMaterial, consolePanel, emitter, outlet, type MachineModel } from "../machineParts";
+import { base, beltMaterial, consolePanel, emitter, outlet, type MachineModel } from "./machineParts";
 import { buildFeeder, type FeederKind } from "./feeders";
-import { box, glow, mesh, surface } from "../materials";
+import { box, glow, mesh, surface } from "./materials";
 import { FINISH, boltRing, hazardTexture, lathe, pipe, platingTexture } from "./kit";
 
 const FURNACE = { x: -0.2, z: -0.4 } as const;
@@ -61,7 +61,7 @@ function press(root: Group): Group {
 }
 
 /** The new smelter: an arc furnace drum, electrodes on the roof, a stamping press and a tall stack. */
-export function smelterModelV2(feeder: FeederKind = "hoist"): MachineModel {
+export function smelterModel(feeder: FeederKind = "hoist"): MachineModel {
   const root = new Group();
   const rig = base(root);
   const heat = surface({ color: 0xffb050, emissive: 0xff5a10, emissiveIntensity: 1.2, roughness: 0.4, noShadow: true }).clone();

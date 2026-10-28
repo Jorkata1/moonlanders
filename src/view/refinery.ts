@@ -1,6 +1,6 @@
 import { CylinderGeometry, Group, MeshStandardMaterial, SphereGeometry, TorusGeometry, type Mesh } from "three";
-import { base, beltMaterial, consolePanel, emitter, outlet, type MachineModel } from "../machineParts";
-import { box, glow, mesh, surface } from "../materials";
+import { base, beltMaterial, consolePanel, emitter, outlet, type MachineModel } from "./machineParts";
+import { box, glow, mesh, surface } from "./materials";
 import { buildFeeder } from "./feeders";
 import { FINISH, boltRing, lathe, pipe } from "./kit";
 
@@ -79,7 +79,7 @@ function carousel(root: Group): { spin: Group; cells: MeshStandardMaterial } {
 }
 
 /** The new helium refinery: a crystal crusher, a glass-belted plasma reactor, a distillation column and a cell-filling carousel. */
-export function refineryModelV2(): MachineModel {
+export function refineryModel(): MachineModel {
   const root = new Group();
   const rig = base(root);
   const plasma = surface({ color: 0xb27bff, emissive: 0x8a4dff, emissiveIntensity: 1.6, roughness: 0.2, noShadow: true }).clone();

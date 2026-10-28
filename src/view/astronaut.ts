@@ -1,7 +1,7 @@
 import { CapsuleGeometry, CylinderGeometry, Group, SphereGeometry, SpotLight, TorusGeometry } from "three";
-import { bakeStatic } from "../bake";
-import { laserDrill, type AstronautModel } from "../characters";
-import { box, glow, mesh, surface } from "../materials";
+import { bakeStatic } from "./bake";
+import { laserDrill, type AstronautModel } from "./characters";
+import { box, glow, mesh, surface } from "./materials";
 import { FINISH, lathe, ring } from "./kit";
 
 /** Upper arm, elbow joint, forearm and glove; pivots at the shoulder. */
@@ -54,7 +54,7 @@ function backpack(group: Group): ReturnType<typeof box> {
 }
 
 /** The new astronaut: rounded quilted suit, big gold visor, twin helmet lamps and a detailed pack. */
-export function astronautModelV2(): AstronautModel {
+export function astronautModel(): AstronautModel {
   const root = new Group();
   const body = new Group();
   root.add(body);

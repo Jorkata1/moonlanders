@@ -1,67 +1,14 @@
-import { CylinderGeometry, Group, SphereGeometry, TorusGeometry, Vector3, type MeshStandardMaterial, type Scene } from "three";
+import { Vector3, type Scene } from "three";
 import { DRONE, droneCapacityFor, type ItemId } from "../config";
 import type { PlanetDef } from "../planets/types";
 import type { DroneState, GameState } from "../sim/state";
-import { bakeStatic } from "./bake";
+import { droneModel, type DroneModel } from "./droneModel";
 import { StackView, type ItemPool } from "./items";
-import { LOOK, box, glow, mesh, surface } from "./materials";
 import { heightAt } from "./terrain";
 
-const GOLD = 0xffc83d;
 const PARKED_HEIGHT = 0.45;
 const CLIMB_RATE = 2.5;
 const TURN_RATE = 6;
-
-interface DroneModel {
-  root: Group;
-  body: Group;
-  rotors: Group[];
-  lights: MeshStandardMaterial;
-  stackAnchor: Group;
-}
-
-/** Quad-rotor cargo drone with a gold shell and an open basket underneath. */
-function droneModel(): DroneModel {
-  const root = new Group();
-  const body = new Group();
-  root.add(body);
-  const shell = surface({ color: GOLD, roughness: 0.35, metalness: 0.4, reflective: true, envMapIntensity: 0.6 });
-  body.add(mesh(new SphereGeometry(0.34, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), shell, 0, 0.1, 0));
-  body.add(mesh(new CylinderGeometry(0.36, 0.3, 0.14, 20), LOOK.white(), 0, 0.04, 0));
-  body.add(box(0.22, 0.08, 0.05, glow(0x4de3ff, 2.6), 0, 0.2, 0.3, 0.02));
-  const rotors: Group[] = [];
-  for (let i = 0; i < 4; i += 1) {
-    const angle = (i / 4) * Math.PI * 2 + Math.PI / 4;
-    const x = Math.sin(angle) * 0.62;
-    const z = Math.cos(angle) * 0.62;
-    const arm = box(0.62, 0.05, 0.07, LOOK.dark(), x / 2, 0.06, z / 2, 0.02);
-    arm.rotation.y = angle + Math.PI / 2;
-    body.add(arm, mesh(new CylinderGeometry(0.07, 0.08, 0.1, 10), LOOK.dark(), x, 0.08, z));
-    body.add(mesh(new TorusGeometry(0.24, 0.025, 6, 20), shell, x, 0.12, z).rotateX(Math.PI / 2));
-    const rotor = new Group();
-    rotor.userData.dynamic = true;
-    rotor.position.set(x, 0.15, z);
-    rotor.add(box(0.42, 0.015, 0.06, LOOK.steel(), 0, 0, 0, 0.005), box(0.06, 0.015, 0.42, LOOK.steel(), 0, 0, 0, 0.005));
-    body.add(rotor);
-    rotors.push(rotor);
-  }
-  // Basket hanging under the body.
-  const basket = new Group();
-  basket.position.y = -0.18;
-  basket.add(box(0.5, 0.04, 0.5, LOOK.dark(), 0, -0.12, 0, 0.015));
-  for (const [x, z, w, d] of [[0, -0.24, 0.5, 0.03], [0, 0.24, 0.5, 0.03], [-0.24, 0, 0.03, 0.5], [0.24, 0, 0.03, 0.5]] as const) {
-    basket.add(box(w, 0.14, d, LOOK.steel(), x, -0.05, z, 0.01));
-  }
-  body.add(basket);
-  const stackAnchor = new Group();
-  stackAnchor.userData.dynamic = true;
-  stackAnchor.position.set(0, -0.28, 0);
-  body.add(stackAnchor);
-  const lights = surface({ color: 0x5df2a0, emissive: 0x5df2a0, emissiveIntensity: 1.5, roughness: 0.3, noShadow: true }).clone();
-  for (const [x, z] of [[0.3, 0.1], [-0.3, 0.1]] as const) body.add(mesh(new SphereGeometry(0.04, 8, 6), lights, x, 0.05, z));
-  bakeStatic(body);
-  return { root, body, rotors, lights, stackAnchor };
-}
 
 interface DroneView {
   model: DroneModel;

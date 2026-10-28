@@ -1,6 +1,6 @@
 import { CatmullRomCurve3, CylinderGeometry, LatheGeometry, Mesh, RepeatWrapping, SphereGeometry, TorusGeometry, TubeGeometry, Vector2, Vector3, type CanvasTexture, type Material } from "three";
-import { mesh, surface } from "../materials";
-import { canvasTexture } from "../textures";
+import { mesh, surface } from "./materials";
+import { canvasTexture } from "./textures";
 
 /** A smooth body of revolution from (radius, height) pairs, bottom to top. */
 export function lathe(profile: ReadonlyArray<readonly [number, number]>, material: Material, segments = 32): Mesh {

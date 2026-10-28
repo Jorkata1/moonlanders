@@ -1,7 +1,7 @@
 import { BoxGeometry, CylinderGeometry, Group, Mesh, SphereGeometry, type MeshStandardMaterial } from "three";
-import { bakeStatic } from "../bake";
-import { laserDrill, type RobotModel } from "../characters";
-import { box, glow, mesh, surface } from "../materials";
+import { bakeStatic } from "./bake";
+import { laserDrill, type RobotModel } from "./characters";
+import { box, glow, mesh, surface } from "./materials";
 import { FINISH, hazardTexture, platingTexture } from "./kit";
 
 const WHEEL_RADIUS = 0.15;
@@ -26,7 +26,7 @@ function wheel(x: number, z: number): Mesh {
 }
 
 /** The new rover: rounded hull on rocker-bogie wheels, a friendly two-eyed head, jointed drill arm and ribbed cargo bin. */
-export function robotModelV2(accent: number): RobotModel {
+export function robotModel(accent: number): RobotModel {
   const root = new Group();
   const chassis = new Group();
   root.add(chassis);

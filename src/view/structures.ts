@@ -3,16 +3,13 @@ import {
   CylinderGeometry,
   DoubleSide,
   Group,
-  LatheGeometry,
   Mesh,
   MeshStandardMaterial,
   PointLight,
   RingGeometry,
   SphereGeometry,
   TorusGeometry,
-  Vector2,
 } from "three";
-import { bakeStatic } from "./bake";
 import { LOOK, box, glow, mesh, surface } from "./materials";
 
 /** The oxygen dome: glass, a ribbed frame, a small habitat and a glowing O2 ring on the ground. */
@@ -51,26 +48,6 @@ export function domeModel(radius: number): Group {
   const lamp = new PointLight(0xbdeeff, 4, 7, 2);
   lamp.position.set(0, 2.6, 0);
   root.add(lamp);
-  return root;
-}
-
-export function workshopModel(): Group {
-  const root = new Group();
-  root.add(box(2.2, 0.16, 1.6, LOOK.dark(), 0, 0.08, -0.4, 0.06));
-  root.add(box(1.6, 0.9, 0.5, LOOK.panel(), 0, 0.6, -0.9, 0.08));
-  const screen = box(1.2, 0.5, 0.05, glow(0x4de3ff, 1.6), 0, 1.25, -0.88, 0.04);
-  screen.rotation.x = -0.2;
-  root.add(screen, box(0.08, 0.8, 0.08, LOOK.dark(), -0.75, 1.3, -1.1));
-  // Robotic arm hanging over the bench.
-  const arm = new Group();
-  arm.add(mesh(new CylinderGeometry(0.12, 0.16, 0.3, 12), LOOK.orange(), 0, 0.15, 0));
-  arm.add(box(0.12, 0.8, 0.12, LOOK.orange(), 0, 0.6, 0, 0.04));
-  arm.add(box(0.5, 0.1, 0.1, LOOK.dark(), 0.22, 1.0, 0, 0.03));
-  arm.position.set(0.85, 0.16, -0.7);
-  arm.name = "arm";
-  arm.userData.dynamic = true;
-  root.add(arm);
-  bakeStatic(root);
   return root;
 }
 

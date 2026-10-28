@@ -4,7 +4,7 @@ import { isInsideDome } from "./hazards";
 import { isRidgeOpen, isStormRaging, type GameState } from "./state";
 
 const ROCKET_RADIUS = 1.9;
-const STATION_RADIUS = 1.1;
+const STATION_RADIUS = 1.4;
 const DRILL_RADIUS = 1.3;
 /** Half the ridge's thickness: a wall of big boulders the player cannot climb. */
 export const RIDGE_HALF_DEPTH = 2.3;

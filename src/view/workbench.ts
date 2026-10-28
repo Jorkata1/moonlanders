@@ -1,7 +1,7 @@
 import { AdditiveBlending, CylinderGeometry, Group, IcosahedronGeometry, MeshBasicMaterial, PointLight, SphereGeometry, TorusGeometry } from "three";
-import { bakeStatic } from "../bake";
-import { box, glow, mesh, surface } from "../materials";
-import { canvasTexture } from "../textures";
+import { bakeStatic } from "./bake";
+import { box, glow, mesh, surface } from "./materials";
+import { canvasTexture } from "./textures";
 import { FINISH, hazardTexture, pipe, platingTexture } from "./kit";
 
 export interface WorkbenchModel {
@@ -84,7 +84,7 @@ function robotArm(): { root: Group; shoulder: Group; elbow: Group; wrist: Group 
 }
 
 /** The new workbench: a steel bench with a vice and tools, a pegboard wall, a tool chest, a lamp, a hologram projector and a jointed robot arm. */
-export function workbenchModelV2(): WorkbenchModel {
+export function workbenchModel(): WorkbenchModel {
   const root = new Group();
   root.add(box(3.0, 0.16, 1.9, FINISH.graphite(), 0, 0.08, -0.35, 0.06));
   root.add(box(3.06, 0.05, 1.96, glow(0xffc83d, 0.4), 0, 0.03, -0.35, 0.02));
@@ -112,7 +112,6 @@ export function workbenchModelV2(): WorkbenchModel {
 
   const arm = robotArm();
   arm.root.position.set(1.25, 0.16, -0.25);
-  arm.root.name = "arm";
   root.add(arm.root);
   bakeStatic(root);
 
