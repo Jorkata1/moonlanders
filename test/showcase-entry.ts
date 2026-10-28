@@ -1,7 +1,12 @@
 // Model showcase: each old model beside its redesign, under the same light, for side-by-side review.
 import { Color, DirectionalLight, Group, HemisphereLight, Mesh, MeshStandardMaterial, PerspectiveCamera, PlaneGeometry, Scene, Vector3, type Object3D } from "three";
 import { astronautModel, robotModel } from "../src/view/characters";
-import { smelterModel } from "../src/view/machines";
+import { refineryModel, smelterModel } from "../src/view/machines";
+import { workshopModel } from "../src/view/structures";
+import { suitStationModel } from "../src/view/suitStation";
+import { refineryModelV2 } from "../src/view/v2/refinery";
+import { suitStationModelV2 } from "../src/view/v2/suitStation";
+import { workbenchModelV2 } from "../src/view/v2/workbench";
 import { createRenderPipeline, enableShadows } from "../src/view/render";
 import { rocketModel } from "../src/view/rocket";
 import { regolithNormalTexture, regolithTexture } from "../src/view/textures";
@@ -72,6 +77,11 @@ interface Pair {
 const smelterOld = smelterModel();
 const smelterNew = smelterModelV2();
 const feederModels = (["funnel", "hatch", "hoist", "crusher"] as const).map((kind) => smelterModelV2(kind));
+const refineryOld = refineryModel();
+const refineryNew = refineryModelV2();
+const suitOld = suitStationModel();
+const suitNew = suitStationModelV2();
+const benchNew = workbenchModelV2();
 const rocketOld = rocketModel();
 const rocketNew = rocketModelV2();
 const pairs: Record<string, Pair> = {
@@ -81,6 +91,9 @@ const pairs: Record<string, Pair> = {
   smelter: { old: smelterOld.root, next: smelterNew.root, spread: 2.9, lift: 0, close: [9.5, 5.2, 1.4] },
   feedA: { old: feederModels[0]!.root, next: feederModels[1]!.root, spread: 2.9, lift: 0, close: [9.5, 5.2, 1.4] },
   feedB: { old: feederModels[2]!.root, next: feederModels[3]!.root, spread: 2.9, lift: 0, close: [9.5, 5.2, 1.4] },
+  refinery: { old: refineryOld.root, next: refineryNew.root, spread: 2.9, lift: 0, close: [9.5, 5.2, 1.4] },
+  workbench: { old: workshopModel(), next: benchNew.root, spread: 2.0, lift: 0, close: [6.4, 3.6, 1.0] },
+  suit: { old: suitOld.root, next: suitNew.root, spread: 1.8, lift: 0, close: [7.0, 3.6, 1.2] },
   rocket: { old: rocketOld.root, next: rocketNew.root, spread: 2.6, lift: 0, close: [10.5, 4.2, 2.6] },
 };
 
@@ -111,6 +124,12 @@ function animate(time: number): void {
     model.rig.update("working", time, 1 / 30);
   }
   for (const rocket of [rocketOld, rocketNew]) rocket.setBuild(0.5, false, time, 1 / 30);
+  for (const model of [refineryOld, refineryNew]) {
+    model.update(time, 1 / 30, true, 0.6);
+    model.rig.update("working", time, 1 / 30);
+  }
+  for (const station of [suitOld, suitNew]) station.update(time, 1 / 30, true);
+  benchNew.update(time, 1 / 30, true);
 }
 
 const GAME_OFFSET = new Vector3(0, 11.5, 8.2);
