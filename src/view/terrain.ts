@@ -140,6 +140,8 @@ export interface RidgeView {
 
 /** Rows of the ridge, front (south) to back: depth offset, smallest and largest boulder. */
 const RIDGE_ROWS = [
+  // Talus: broken rubble at the foot of the ridge, so the wall rises out of the ground.
+  { offset: 1.85, min: 0.35, max: 0.6 },
   { offset: 1, min: 1.2, max: 1.7 },
   { offset: 0, min: 2, max: 2.8 },
   { offset: -1.2, min: 2.3, max: 3.2 },

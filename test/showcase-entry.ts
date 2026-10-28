@@ -6,6 +6,7 @@ import { astronautModel } from "../src/view/astronaut";
 import { laserDrill } from "../src/view/characters";
 import { depositModel } from "../src/view/deposits";
 import { buildDecor } from "../src/view/decor";
+import { rock } from "../src/view/rocks";
 import { drillRigModel } from "../src/view/drillRig";
 import { MOON } from "../src/planets/moon";
 import { itemModel } from "../src/view/items";
@@ -92,6 +93,7 @@ const exhibits: Record<string, Exhibit> = {
   pod: { object: landerModel().root, close: [4, 2, 1], animate: () => undefined },
   deposits: { object: row((["carbon", "clay", "ironOre", "heliumX"] as const).map((item, i) => depositModel(item, i + 3).root), 2), close: [6, 3, 0.5], animate: () => undefined },
   items: { object: row(ITEM_IDS.map((item) => itemModel(item)), 0.8, 2.5), close: [4.6, 2.2, 0.2], animate: () => undefined },
+  rocks: { object: row([rock(MOON, 1.6, 3), rock(MOON, 1.1, 7), rock(MOON, 0.5, 9), rock(MOON, 0.9, 4)], 2.2), close: [6, 2.6, 0.5], animate: () => undefined },
   dish: { object: dish, close: [5, 2.8, 1.4], animate: () => undefined },
   tool: { object: drillTool.root, close: [2.6, 1.4, 0.6], animate: (time) => (drillTool.prongs.rotation.y = time * 6) },
 };
