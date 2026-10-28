@@ -50,16 +50,19 @@ const busy = startBuild(o, "smelter", () => undefined);
 const second = startSuitUpgrade(o, "capacity", () => undefined);
 report("orders", partial && o.built.has("workbench") && busy.ok && !second.ok && o.player.carry.join() === "clay", second.ok ? "" : second.reason);
 
-// Material robots stockpile beside their dock, then carry to the order that needs their material.
+// Robots only stockpile beside their dock; the cargo drone is the one that carries to the order.
 const r = createState(MOON);
-r.built.add("workbench"); r.built.add("smelter"); r.built.add("robot-carbon");
+for (const id of ["workbench", "smelter", "robot-carbon"]) r.built.add(id);
 r.order = null;
 run(r, 60);
 const stocked = r.stockpiles["robot-carbon"]!;
 startBuild(r, "robot-clay", () => undefined);
 r.order!.delivered.plate = 20;
+run(r, 30);
+const robotsAlone = (r.order as GameState["order"])?.delivered.carbon ?? -1;
+r.built.add("robot-iron"); r.built.add("drone");
 run(r, 90);
-report("robot stockpile and delivery", stocked > 0 && r.built.has("robot-clay"), { stocked, left: r.stockpiles["robot-carbon"] });
+report("robots stockpile, drone delivers", stocked > 0 && robotsAlone === 0 && r.built.has("robot-clay"), { stocked, robotsAlone, left: r.stockpiles["robot-carbon"] });
 
 // Switching a robot off parks it; nothing more is mined.
 setWorkerEnabled(r, "robot-carbon", false);
@@ -67,6 +70,14 @@ run(r, 5);
 const parkedMined = r.stats.mined.carbon;
 run(r, 20);
 report("robot off", r.stats.mined.carbon === parkedMined && r.robots.find((x) => x.id === "robot-carbon")?.phase === "parked");
+
+// Cargo drone: feeds the smelter from the iron robot's stockpile.
+const feed = createState(MOON);
+for (const id of ["workbench", "smelter", "robot-iron", "drone"]) feed.built.add(id);
+feed.order = null;
+feed.player.x = MOON.spawn.x; feed.player.z = MOON.spawn.z;
+run(feed, 120);
+report("drone feeds the smelter", (feed.machines.get("smelter")?.processed ?? 0) > 0, { processed: feed.machines.get("smelter")?.processed, ore: feed.stockpiles["robot-iron"] });
 
 // Cargo drone: flies smelter plates to the active order.
 const d = createState(MOON);

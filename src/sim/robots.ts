@@ -1,24 +1,25 @@
 import { ROBOT, robotCapacityFor, robotMineIntervalFor, robotSpeedFor } from "../config";
 import type { BuildDef, Point } from "../planets/types";
-import { machineStats, nearestMinableDeposit } from "./economy";
+import { nearestMinableDeposit } from "./economy";
 import type { Emit } from "./events";
 import { routeToward } from "./movement";
 import { takeFromDeposit } from "./orefall";
-import { deliverToOrder, orderNeeds, orderSite } from "./orders";
 import { buildDef, stockpileSpot, type GameState, type RobotState } from "./state";
 
 const ARRIVE_DISTANCE = 0.15;
 const SEARCH_RANGE = 80;
 const MINE_STANDOFF = 1.1;
-/** Robots stand just beside a drop-off point, not on top of it. */
+/** Robots stand just beside their stockpile, not on top of it. */
 const DROP_STANDOFF = 0.6;
+/** Parked robots look for work twice a second rather than every tick. */
+const PARKED_CHECK_SECONDS = 0.5;
 
 /** Spawn a robot on its dock for every robot build that is finished. */
 function syncRobots(state: GameState): void {
   for (const build of state.planet.builds) {
     if (build.kind !== "robot" || !build.item || !state.built.has(build.id)) continue;
     if (state.robots.some((r) => r.id === build.id)) continue;
-    state.robots.push({ id: build.id, item: build.item, machineId: build.machineId ?? null, x: build.x, z: build.z, heading: 0, carry: 0, phase: "parked", dropOff: "stockpile", depositId: null, timer: 0 });
+    state.robots.push({ id: build.id, item: build.item, x: build.x, z: build.z, heading: 0, carry: 0, phase: "parked", depositId: null, timer: 0 });
   }
 }
 
@@ -45,75 +46,16 @@ function dockOf(state: GameState, robot: RobotState): BuildDef {
   return build;
 }
 
-function dropOffPoint(state: GameState, robot: RobotState): Point {
-  if (robot.dropOff === "machine") {
-    const def = state.planet.machines.find((m) => m.id === robot.machineId);
-    if (def) return def.inputPad;
-  }
-  if (robot.dropOff === "order" && state.order) return orderSite(state, state.order);
-  return stockpileSpot(dockOf(state, robot));
+function stockpileFull(state: GameState, robot: RobotState): boolean {
+  return (state.stockpiles[robot.id] ?? 0) >= ROBOT.stockpileCapacity;
 }
 
-/** A far-away build is left to the cargo drone when one is working; robots keep mining instead. */
-function walksToOrder(state: GameState, robot: RobotState): boolean {
-  if (!state.order) return false;
-  const site = orderSite(state, state.order);
-  const dock = dockOf(state, robot);
-  const droneWorking = state.drones.some((d) => state.enabled[d.id] !== false);
-  return !droneWorking || Math.hypot(site.x - dock.x, site.z - dock.z) <= ROBOT.walkRange;
-}
-
-/** Pick the robot's next job from scratch. */
+/** Robots only mine and stack: carry a load home, or go mine while the stockpile has room. */
 function decide(state: GameState, robot: RobotState): void {
   robot.timer = 0;
-  if (state.enabled[robot.id] === false) {
-    robot.phase = "parked";
-    return;
-  }
-  if (robot.machineId) {
-    robot.dropOff = "machine";
-    robot.phase = robot.carry > 0 ? "toDropOff" : "toDeposit";
-    return;
-  }
-  const need = walksToOrder(state, robot) ? orderNeeds(state, robot.item) : 0;
-  const stock = state.stockpiles[robot.id] ?? 0;
-  if (robot.carry > 0) {
-    robot.dropOff = need > 0 ? "order" : "stockpile";
-    robot.phase = robot.dropOff === "stockpile" && stock >= ROBOT.stockpileCapacity ? "parked" : "toDropOff";
-    return;
-  }
-  if (need > 0 && stock > 0) robot.phase = "toStockpile";
-  else if (need > 0 || stock < ROBOT.stockpileCapacity) robot.phase = "toDeposit";
-  else robot.phase = "parked";
-}
-
-/** Hand one carried item over at the drop-off; returns false while it has to wait. */
-function unloadOne(state: GameState, robot: RobotState, emit: Emit): boolean {
-  const at = { x: robot.x, z: robot.z };
-  if (robot.dropOff === "machine") {
-    const def = state.planet.machines.find((m) => m.id === robot.machineId);
-    const machine = def ? state.machines.get(def.id) : undefined;
-    if (!def || !machine || !state.built.has(def.id) || machine.input >= machineStats(state, def).inputCapacity) return false;
-    machine.input += 1;
-    robot.carry -= 1;
-    emit({ type: "fed", item: robot.item, machineId: def.id, to: def.inputPad, by: robot.id });
-    return true;
-  }
-  if (robot.dropOff === "order") {
-    if (!deliverToOrder(state, robot.item, at, robot.id, emit)) {
-      robot.dropOff = "stockpile";
-      robot.phase = "toDropOff";
-      return false;
-    }
-    robot.carry -= 1;
-    return true;
-  }
-  const stock = state.stockpiles[robot.id] ?? 0;
-  if (stock >= ROBOT.stockpileCapacity) return false;
-  state.stockpiles[robot.id] = stock + 1;
-  robot.carry -= 1;
-  emit({ type: "stockpiled", robotId: robot.id, item: robot.item, to: stockpileSpot(dockOf(state, robot)) });
-  return true;
+  if (state.enabled[robot.id] === false) robot.phase = "parked";
+  else if (robot.carry > 0) robot.phase = stockpileFull(state, robot) ? "parked" : "toDropOff";
+  else robot.phase = stockpileFull(state, robot) ? "parked" : "toDeposit";
 }
 
 function updateRobot(state: GameState, robot: RobotState, dt: number, emit: Emit): void {
@@ -124,11 +66,9 @@ function updateRobot(state: GameState, robot: RobotState, dt: number, emit: Emit
 
   switch (robot.phase) {
     case "parked": {
-      const dock = dockOf(state, robot);
-      walk(state, robot, dock, 0, speed, dt);
+      walk(state, robot, dockOf(state, robot), 0, speed, dt);
       robot.timer += dt;
-      // Look for work twice a second rather than every tick.
-      if (state.enabled[robot.id] !== false && robot.timer > 0.5) decide(state, robot);
+      if (state.enabled[robot.id] !== false && robot.timer > PARKED_CHECK_SECONDS) decide(state, robot);
       return;
     }
     case "toDeposit": {
@@ -162,42 +102,23 @@ function updateRobot(state: GameState, robot: RobotState, dt: number, emit: Emit
       return;
     }
     case "toDropOff": {
-      if (robot.dropOff === "order" && orderNeeds(state, robot.item) <= 0) robot.dropOff = robot.machineId ? "machine" : "stockpile";
-      if (walk(state, robot, dropOffPoint(state, robot), DROP_STANDOFF, speed, dt)) {
+      if (walk(state, robot, stockpileSpot(dockOf(state, robot)), DROP_STANDOFF, speed, dt)) {
         robot.phase = "unloading";
         robot.timer = 0;
       }
       return;
     }
     case "unloading": {
-      if (robot.carry <= 0) {
-        decide(state, robot);
-        return;
-      }
-      robot.timer += dt;
-      if (robot.timer < ROBOT.unloadInterval) return;
-      if (unloadOne(state, robot, emit)) robot.timer = 0;
-      return;
-    }
-    case "toStockpile": {
-      if (walk(state, robot, stockpileSpot(dockOf(state, robot)), DROP_STANDOFF, speed, dt)) {
-        robot.phase = "loading";
-        robot.timer = 0;
-      }
-      return;
-    }
-    case "loading": {
-      const stock = state.stockpiles[robot.id] ?? 0;
-      const wanted = Math.min(capacity, orderNeeds(state, robot.item));
-      if (stock <= 0 || robot.carry >= wanted) {
+      if (robot.carry <= 0 || stockpileFull(state, robot)) {
         decide(state, robot);
         return;
       }
       robot.timer += dt;
       if (robot.timer < ROBOT.unloadInterval) return;
       robot.timer = 0;
-      state.stockpiles[robot.id] = stock - 1;
-      robot.carry += 1;
+      state.stockpiles[robot.id] = (state.stockpiles[robot.id] ?? 0) + 1;
+      robot.carry -= 1;
+      emit({ type: "stockpiled", robotId: robot.id, item: robot.item, to: stockpileSpot(dockOf(state, robot)) });
     }
   }
 }

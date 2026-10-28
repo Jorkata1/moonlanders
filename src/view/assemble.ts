@@ -13,6 +13,7 @@ interface Piece {
 }
 
 interface Assembly {
+  readonly root: Object3D;
   readonly pieces: Piece[];
   t: number;
 }
@@ -29,16 +30,36 @@ function ease(t: number): number {
   return 1 + (s + 1) * k * k * k + s * k * k;
 }
 
+function settle(piece: Piece): void {
+  piece.object.scale.copy(piece.scale);
+  piece.object.position.y = piece.y;
+}
+
 export function createAssembler(): Assembler {
   const running: Assembly[] = [];
   const box = new Box3();
+  const scratch = new Vector3();
+
+  /** World height of a part's lowest point; an empty part (no meshes yet) counts from where it sits. */
+  function lowestPoint(part: Object3D): number {
+    box.setFromObject(part);
+    if (!box.isEmpty() && Number.isFinite(box.min.y)) return box.min.y;
+    return part.getWorldPosition(scratch).y;
+  }
 
   return {
     start(root) {
+      // Assembling the same model again (a machine upgrade) first settles any run still going on it.
+      for (let i = running.length - 1; i >= 0; i -= 1) {
+        const assembly = running[i] as Assembly;
+        if (assembly.root !== root) continue;
+        for (const piece of assembly.pieces) settle(piece);
+        running.splice(i, 1);
+      }
       const parts = root.children.filter((child) => child.type !== "Sprite" && child.type !== "PointLight");
       if (parts.length === 0) return;
       root.updateMatrixWorld(true);
-      const heights = parts.map((part) => box.setFromObject(part).min.y);
+      const heights = parts.map((part) => lowestPoint(part));
       const low = Math.min(...heights);
       const high = Math.max(...heights, low + 1e-3);
       const pieces = parts.map((object, i) => ({
@@ -48,7 +69,7 @@ export function createAssembler(): Assembler {
         delay: (((heights[i] as number) - low) / (high - low)) * SPREAD_SECONDS,
       }));
       for (const piece of pieces) piece.object.scale.setScalar(0.0001);
-      running.push({ pieces, t: 0 });
+      running.push({ root, pieces, t: 0 });
     },
     update(dt) {
       for (let i = running.length - 1; i >= 0; i -= 1) {
@@ -62,7 +83,9 @@ export function createAssembler(): Assembler {
           piece.object.scale.copy(piece.scale).multiplyScalar(grow);
           piece.object.position.y = piece.y + (1 - Math.min(1, k)) * DROP;
         }
-        if (done) running.splice(i, 1);
+        if (!done) continue;
+        for (const piece of assembly.pieces) settle(piece);
+        running.splice(i, 1);
       }
     },
   };

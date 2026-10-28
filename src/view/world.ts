@@ -24,6 +24,8 @@ import { createWorkerSites } from "./workerSites";
 const SHADOW_EXTENT = 16;
 const SUN_OFFSET = new Vector3(-9, 18, 7);
 const POP_SECONDS = 0.6;
+/** Share of the bore after which the gap boulders start to crumble. */
+const BREAKTHROUGH_AT = 0.85;
 /** Objectives that are about finishing an order point the guide at the hologram instead. */
 const ORDER_CHECKS: ReadonlySet<string> = new Set(["built", "builtAny", "suitUpgraded"]);
 
@@ -258,12 +260,13 @@ export function buildWorld(scene: Scene, state: GameState, pool: ItemPool, shado
       decor.update(time);
       assembler.update(dt);
       syncPops(dt);
-      // The gap boulders crumble away as the drill bores through them.
+      // The ridge stays whole while the drill works, then the gap boulders crumble as it breaks through.
       const bored = state.boring ?? 0;
+      const crumble = Math.max(0, (bored - BREAKTHROUGH_AT) / (1 - BREAKTHROUGH_AT));
       for (const boulder of terrain.ridge.gapBoulders) {
         const base = (boulder.userData.baseScale as number | undefined) ?? (boulder.userData.baseScale = boulder.scale.x);
         boulder.visible = bored < 1;
-        boulder.scale.setScalar(Math.max(0.01, 1 - bored) * base);
+        boulder.scale.setScalar(Math.max(0.01, 1 - crumble) * base);
       }
       sun.position.set(state.player.x + SUN_OFFSET.x, SUN_OFFSET.y, state.player.z + SUN_OFFSET.z);
       sun.target.position.set(state.player.x, 0, state.player.z);

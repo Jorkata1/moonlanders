@@ -37,6 +37,10 @@ export function drillRigModel(): DrillRigModel {
   boom.userData.dynamic = true;
   boom.position.set(0.15, 1.05, -0.4);
   boom.add(box(0.46, 0.46, 1.2, paint, 0, 0, -0.3, 0.06));
+  // A middle stage slides half as far as the arm, so the boom stays joined at full reach.
+  const middle = new Group();
+  middle.add(box(0.39, 0.39, 2.0, LOOK.dark(), 0, 0, -0.7, 0.05));
+  boom.add(middle);
   const arm = new Group();
   arm.add(box(0.32, 0.32, 2.4, LOOK.steel(), 0, 0, -1.2, 0.04));
   const head = new Group();
@@ -64,6 +68,7 @@ export function drillRigModel(): DrillRigModel {
       const k = boring === null ? 0 : boring < EXTEND_SHARE ? boring / EXTEND_SHARE : boring >= 1 ? 0 : boring > 1 - EXTEND_SHARE ? (1 - boring) / EXTEND_SHARE : 1;
       const reach = BOOM_REST + (BOOM_REACH - BOOM_REST) * k;
       arm.position.z += (-(reach - BOOM_REST) - arm.position.z) * Math.min(1, dt * 4);
+      middle.position.z = arm.position.z / 2;
       bit.rotation.z += dt * (working ? 24 : 0);
       head.position.x = working ? Math.sin(time * 40) * 0.02 : 0;
       lamp.emissiveIntensity = working ? 1.2 + Math.max(0, Math.sin(time * 9)) * 3 : 0.3;

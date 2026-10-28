@@ -104,7 +104,7 @@ export function createDronesView(scene: Scene, pool: ItemPool, planet: PlanetDef
         const bob = parked ? 0 : Math.sin(time * 3 + drone.x) * 0.08;
         model.root.position.set(drone.x, heightAt(planet, drone.x, drone.z) + view.height + bob, drone.z);
         model.root.rotation.y = view.heading;
-        const flying = drone.phase === "toSource" || drone.phase === "toOrder" || drone.phase === "restocking" || drone.phase === "returning";
+        const flying = drone.phase === "toSource" || drone.phase === "toTarget" || drone.phase === "restocking" || drone.phase === "returning";
         model.body.rotation.x = flying ? 0.18 : 0;
         for (const rotor of model.rotors) rotor.rotation.y += dt * (parked ? 2 : 32);
         model.lights.emissive.setHex(state.enabled[drone.id] === false ? 0xff6b5a : 0x5df2a0);

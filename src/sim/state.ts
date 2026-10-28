@@ -42,22 +42,17 @@ export interface MachineState {
   processed: number;
 }
 
-export type RobotPhase = "toDeposit" | "mining" | "toDropOff" | "unloading" | "toStockpile" | "loading" | "parked";
+export type RobotPhase = "toDeposit" | "mining" | "toDropOff" | "unloading" | "parked";
 
-/** Where a robot is carrying its load. */
-export type DropOff = "machine" | "order" | "stockpile";
-
+/** A mining robot: mines its item and stacks it beside its dock for the cargo drone. */
 export interface RobotState {
   readonly id: string;
   readonly item: ItemId;
-  /** Machine the robot feeds, or null for material robots that supply builds. */
-  readonly machineId: string | null;
   x: number;
   z: number;
   heading: number;
   carry: number;
   phase: RobotPhase;
-  dropOff: DropOff;
   depositId: string | null;
   timer: number;
 }
@@ -80,20 +75,24 @@ export interface FallState extends Point {
   timer: number;
 }
 
-/** `restocking` takes leftover cargo back where it came from when the order no longer needs it. */
-export type DronePhase = "parked" | "toSource" | "loading" | "toOrder" | "unloading" | "restocking" | "returning";
+/** `restocking` takes leftover cargo back where it came from when it is no longer wanted. */
+export type DronePhase = "parked" | "toSource" | "loading" | "toTarget" | "unloading" | "restocking" | "returning";
 
-/** The cargo drone: carries plates from its machine, or a robot's stockpile, to the active order. */
+/** Where the drone picks cargo up: a robot's stockpile or a machine's output. */
+export type DroneSource = { readonly kind: "stockpile"; readonly id: string } | { readonly kind: "machine"; readonly id: string };
+/** Where the drone takes it: the active order's hologram or a machine's input. */
+export type DroneTarget = { readonly kind: "order" } | { readonly kind: "machine"; readonly id: string };
+
+/** The cargo drone: the only worker that carries, from robot stockpiles and machine outputs to the order and machines. */
 export interface DroneState {
   readonly id: string;
-  readonly machineId: string;
   x: number;
   z: number;
   heading: number;
   carry: number;
   cargo: ItemId | null;
-  /** Robot whose stockpile it is fetching from, or null for the machine's output. */
-  source: string | null;
+  source: DroneSource | null;
+  target: DroneTarget | null;
   phase: DronePhase;
   timer: number;
 }
@@ -173,7 +172,7 @@ export function workerBuilds(planet: PlanetDef): BuildDef[] {
 
 export function createState(planet: PlanetDef): GameState {
   const workers = workerBuilds(planet);
-  const materialRobots = workers.filter((b) => b.kind === "robot" && !b.machineId);
+  const robots = workers.filter((b) => b.kind === "robot");
   return {
     planet,
     built: new Set(),
@@ -181,7 +180,7 @@ export function createState(planet: PlanetDef): GameState {
     suit: zeroSuit(),
     stages: Object.fromEntries(workers.map((b) => [b.id, 0])),
     enabled: Object.fromEntries(workers.map((b) => [b.id, true])),
-    stockpiles: Object.fromEntries(materialRobots.map((b) => [b.id, 0])),
+    stockpiles: Object.fromEntries(robots.map((b) => [b.id, 0])),
     player: { x: planet.spawn.x, z: planet.spawn.z, heading: Math.PI, moving: false, carry: [], oxygen: oxygenFor(0), mineTimer: 0, transferTimer: 0, stockpileTimer: 0, stunned: 0, miningTarget: null, warmup: 0, outOfReach: 0 },
     deposits: planet.deposits.filter((d) => !d.hidden).map((d) => ({ ...d, field: fieldKey(d.item, d.zone), amount: DEPOSIT.amount, maxAmount: DEPOSIT.amount, rubble: 0 })),
     machines: new Map(planet.machines.map((m) => [m.id, { id: m.id, input: 0, output: 0, progress: null, processed: 0 }])),

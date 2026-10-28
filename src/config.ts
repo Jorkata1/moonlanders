@@ -103,10 +103,8 @@ export const ROBOT = {
   capacity: 8,
   mineInterval: 0.4,
   unloadInterval: 0.1,
-  /** Material robots stack what they mine beside their dock, up to this many. */
+  /** Robots stack what they mine beside their dock, up to this many; the cargo drone carries it on. */
   stockpileCapacity: 100,
-  /** With a cargo drone working, robots leave builds farther than this from their dock to the drone. */
-  walkRange: 8,
 } as const;
 
 export function robotSpeedFor(stage: number): number {
@@ -179,8 +177,8 @@ export const SUIT_UPGRADES: Record<SuitUpgradeId, SuitUpgradeDef> = {
   },
   capacity: {
     name: "Bigger backpack",
-    effects: ["Carry 9", "Carry 12", "Carry 16"],
-    costs: [{ carbon: 30, clay: 15 }, { carbon: 75, plate: 40 }, { carbon: 165, plate: 75, clay: 30 }],
+    effects: ["Carry 25", "Carry 35"],
+    costs: [{ carbon: 30, clay: 15 }, { carbon: 75, plate: 40 }],
   },
   oxygen: {
     name: "Oxygen tank",
@@ -194,7 +192,7 @@ export const SUIT_UPGRADES: Record<SuitUpgradeId, SuitUpgradeDef> = {
   },
 };
 
-const CAPACITY_BY_LEVEL = [6, 9, 12, 16] as const;
+const CAPACITY_BY_LEVEL = [15, 25, 35] as const;
 const MINING_RATE_BY_LEVEL = [1, 1.25, 1.5, 1.8] as const;
 const OXYGEN_BY_LEVEL = [50, 70, 95, 125] as const;
 

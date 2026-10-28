@@ -103,8 +103,8 @@ export function createTutorial(touch: boolean, startStep: number): Tutorial {
 export const TIPS = {
   orefall: { step: "Fresh material", title: "Rocks from the sky", text: "Mined-out rocks crumble away. New ones fall into the field every few seconds, so a field never runs dry.", button: "Got it" },
   workbench: { step: "Workbench", title: "Pick your next build", text: "Choose one and a hologram appears where it will stand. Bring the materials there; robots and the drone help once you have them.", button: "Got it" },
-  robot: { step: "Robots", title: "Your robot is working", text: "Material robots stack their haul beside their dock and carry it to whatever you build. Stand on a dock to upgrade the robot or switch it off.", button: "Got it" },
-  drone: { step: "Cargo drone", title: "Your drone hauls for you", text: "It flies plates from the smelter, and robot stockpiles, to your builds. Stand on its dock to upgrade it or pause it.", button: "Got it" },
+  robot: { step: "Robots", title: "Your robot is working", text: "Robots only mine: they stack their haul beside their dock. Grab it yourself, or build the cargo drone to haul it. Stand on a dock to upgrade the robot or switch it off.", button: "Got it" },
+  drone: { step: "Cargo drone", title: "Your drone hauls for you", text: "It is the only one that hauls: robot stockpiles and smelter plates go to your builds, iron ore goes to the smelter. Stand on its dock to upgrade it or pause it.", button: "Got it" },
   storm: { step: "Watch out", title: "Dust storm coming!", text: "Storms slow you down and burn your air twice as fast outside the dome. Wait it out inside, or keep working if your tank is full.", button: "Got it" },
 } satisfies Record<string, CoachCard>;
 

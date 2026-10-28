@@ -5,10 +5,14 @@ import { StackView, type ItemPool } from "./items";
 import { heightAt } from "./terrain";
 
 const GUIDE_HIDE_DISTANCE = 2.2;
+/** How long the guide shows the way after a new mission starts. */
+const GUIDE_SHOW_SECONDS = 7;
+const GUIDE_FADE_SECONDS = 1;
+const GUIDE_OPACITY = 0.85;
 
 /** Green arrow at the player's feet pointing to `target`, plus a ring on the target. */
 export function createGuide(scene: Scene, planet: PlanetDef, target: (state: GameState) => Point | null): (state: GameState, time: number) => void {
-  const material = new MeshBasicMaterial({ color: 0x5df2a0, transparent: true, opacity: 0.85, depthWrite: false });
+  const material = new MeshBasicMaterial({ color: 0x5df2a0, transparent: true, opacity: GUIDE_OPACITY, depthWrite: false });
   const arrow = new Group();
   const head = new Mesh(new ConeGeometry(0.28, 0.6, 3), material);
   head.rotation.x = Math.PI / 2;
@@ -18,12 +22,24 @@ export function createGuide(scene: Scene, planet: PlanetDef, target: (state: Gam
   beacon.rotation.x = -Math.PI / 2;
   scene.add(arrow, beacon);
 
+  let shownFor = "";
+  let shownAt = 0;
+
   return (state, time) => {
     const goal = target(state);
     const player = state.player;
-    arrow.visible = goal !== null && distance(player, goal) > GUIDE_HIDE_DISTANCE && player.stunned <= 0;
-    beacon.visible = goal !== null;
-    if (!goal) return;
+    // Each new mission (or new place to go) shows the way once, then the guide fades out.
+    const key = goal ? `${state.objectiveIndex}:${goal.x.toFixed(1)},${goal.z.toFixed(1)}` : "";
+    if (key !== shownFor) {
+      shownFor = key;
+      shownAt = time;
+    }
+    const left = GUIDE_SHOW_SECONDS - (time - shownAt);
+    const showing = goal !== null && left > 0;
+    arrow.visible = showing && distance(player, goal) > GUIDE_HIDE_DISTANCE && player.stunned <= 0;
+    beacon.visible = showing;
+    if (!goal || !showing) return;
+    material.opacity = GUIDE_OPACITY * Math.min(1, left / GUIDE_FADE_SECONDS);
     beacon.position.set(goal.x, heightAt(planet, goal.x, goal.z) + 0.08, goal.z);
     beacon.scale.setScalar(1 + Math.sin(time * 4) * 0.08);
     arrow.position.set(player.x, heightAt(planet, player.x, player.z) + 0.1, player.z);
