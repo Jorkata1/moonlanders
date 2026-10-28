@@ -1,7 +1,8 @@
-import { CatmullRomCurve3, CylinderGeometry, Group, Mesh, SphereGeometry, TubeGeometry, Vector3, type MeshStandardMaterial } from "three";
+import { CatmullRomCurve3, ConeGeometry, CylinderGeometry, DoubleSide, Group, LatheGeometry, Mesh, SphereGeometry, TorusGeometry, TubeGeometry, Vector2, Vector3, type MeshStandardMaterial, type Object3D } from "three";
 import type { DecorDef, DecorKind, PlanetDef, Point } from "../planets/types";
 import { LOOK, box, glow, mesh, surface } from "./materials";
 import { bakeStatic } from "./bake";
+import { FINISH } from "./kit";
 import { heightAt } from "./terrain";
 import { panelTexture } from "./textures";
 
@@ -28,15 +29,67 @@ function solarPanel(): Group {
   return group;
 }
 
+/** Rate the dish turns while sweeping the sky, in radians per second. */
+const DISH_SWEEP = 0.12;
+
+/** Satellite dish: a parabolic reflector on a turning mount with struts, a feed horn, a counterweight, an equipment cabinet and a beacon. */
 function antenna(): Group {
   const group = new Group();
-  group.add(mesh(new CylinderGeometry(0.08, 0.14, 2.6, 10), LOOK.steel(), 0, 1.3, 0));
-  const dish = mesh(new SphereGeometry(0.75, 20, 10, 0, Math.PI * 2, 0, Math.PI / 3.2), LOOK.white(), 0, 2.9, 0.1);
-  dish.rotation.x = Math.PI * 0.72;
-  group.add(dish, mesh(new CylinderGeometry(0.02, 0.02, 0.6, 6), LOOK.dark(), 0, 2.85, 0.35).rotateX(-0.6));
-  group.add(mesh(new SphereGeometry(0.06, 10, 8), glow(0xff5a5a, 3), 0, 3.1, 0.55));
-  group.add(box(0.6, 0.4, 0.5, LOOK.dark(), 0.4, 0.2, 0.2, 0.04));
+  group.add(box(1.1, 0.16, 1.1, FINISH.graphite(), 0, 0.08, 0, 0.04));
+  group.add(mesh(new CylinderGeometry(0.16, 0.24, 1.5, 14), FINISH.gunmetal(), 0, 0.9, 0));
+  group.add(mesh(new CylinderGeometry(0.3, 0.3, 0.12, 20), FINISH.orange(), 0, 1.62, 0));
+  const mount = new Group();
+  mount.position.y = 1.7;
+  mount.userData.dynamic = true;
+  mount.userData.sweep = true;
+  mount.add(box(0.36, 0.3, 0.36, FINISH.shell(), 0, 0.12, 0, 0.06));
+  const tilt = new Group();
+  tilt.position.y = 0.3;
+  tilt.rotation.x = -0.75;
+  // Parabolic reflector with ribs on its back and a rim.
+  const curve = Array.from({ length: 9 }, (_, i) => {
+    const r = (i / 8) * 1.0;
+    return new Vector2(r, r * r * 0.32);
+  });
+  const reflector = surface({ color: 0xdfe3ea, roughness: 0.55, reflective: true, envMapIntensity: 0.2 }).clone();
+  reflector.side = DoubleSide;
+  tilt.add(new Mesh(new LatheGeometry(curve, 32), reflector).translateY(0.12));
+  tilt.add(mesh(new TorusGeometry(1.0, 0.03, 6, 40), FINISH.gunmetal(), 0, 0.44, 0).rotateX(Math.PI / 2));
+  for (let i = 0; i < 6; i += 1) {
+    const rib = box(0.03, 0.05, 1.0, FINISH.gunmetal(), 0, 0.2, 0.5, 0.01);
+    const holder = new Group();
+    holder.rotation.y = (i / 6) * Math.PI * 2;
+    rib.rotation.x = -0.32;
+    holder.add(rib);
+    tilt.add(holder);
+  }
+  // Three struts holding the feed horn at the focus.
+  for (let i = 0; i < 3; i += 1) {
+    const angle = (i / 3) * Math.PI * 2;
+    const foot = new Vector3(Math.sin(angle) * 0.85, 0.36, Math.cos(angle) * 0.85);
+    const strut = pipeBetween(foot, new Vector3(0, 1.0, 0), 0.015, FINISH.chrome());
+    tilt.add(strut);
+  }
+  tilt.add(mesh(new ConeGeometry(0.08, 0.2, 12), FINISH.orange(), 0, 0.98, 0).rotateX(Math.PI));
+  tilt.add(mesh(new CylinderGeometry(0.06, 0.06, 0.08, 12), FINISH.graphite(), 0, 1.1, 0));
+  tilt.add(box(0.24, 0.24, 0.24, FINISH.graphite(), 0, -0.15, -0.35, 0.04));
+  mount.add(tilt);
+  group.add(mount);
+  // Equipment cabinet with a status strip, and the beacon on a mast.
+  group.add(box(0.55, 0.7, 0.4, FINISH.gunmetal(), 0.75, 0.5, 0.25, 0.05), box(0.45, 0.5, 0.02, LOOK.panel(), 0.75, 0.52, 0.46, 0.02));
+  group.add(box(0.4, 0.04, 0.02, glow(0x5df2a0, 2.4), 0.75, 0.7, 0.46, 0.01));
+  group.add(mesh(new CylinderGeometry(0.02, 0.02, 0.8, 6), FINISH.graphite(), -0.45, 0.55, -0.4));
+  group.add(mesh(new SphereGeometry(0.06, 10, 8), glow(0xff5a5a, 3), -0.45, 0.98, -0.4));
   return group;
+}
+
+/** A thin rod from `from` to `to`. */
+function pipeBetween(from: Vector3, to: Vector3, radius: number, material: MeshStandardMaterial): Mesh {
+  const length = from.distanceTo(to);
+  const rod = mesh(new CylinderGeometry(radius, radius, length, 6), material);
+  rod.position.copy(from).lerp(to, 0.5);
+  rod.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), to.clone().sub(from).normalize());
+  return rod;
 }
 
 function crateStack(): Group {
@@ -162,7 +215,11 @@ export function buildDecor(planet: PlanetDef): DecorView {
       pieces.push({ root: place(planet, post, x, z), kind: "beacon" });
     }
   }
+  const sweepers: Object3D[] = [];
   for (const piece of pieces) {
+    piece.root.traverse((object) => {
+      if (object.userData.sweep === true) sweepers.push(object);
+    });
     bakeStatic(piece.root);
     root.add(piece.root);
   }
@@ -171,6 +228,8 @@ export function buildDecor(planet: PlanetDef): DecorView {
     pieces,
     update(time) {
       beaconMaterial.emissiveIntensity = 0.6 + Math.max(0, Math.sin(time * 3)) * 3;
+      // Dishes slowly sweep back and forth across the sky.
+      for (const dish of sweepers) dish.rotation.y = Math.sin(time * DISH_SWEEP) * 1.2;
     },
   };
 }

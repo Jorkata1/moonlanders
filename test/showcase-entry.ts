@@ -5,7 +5,9 @@ import { ITEM_IDS } from "../src/config";
 import { astronautModel } from "../src/view/astronaut";
 import { laserDrill } from "../src/view/characters";
 import { depositModel } from "../src/view/deposits";
+import { buildDecor } from "../src/view/decor";
 import { drillRigModel } from "../src/view/drillRig";
+import { MOON } from "../src/planets/moon";
 import { itemModel } from "../src/view/items";
 import { domeModel, landerModel } from "../src/view/structures";
 import { droneModel } from "../src/view/droneModel";
@@ -66,6 +68,9 @@ function row(objects: Object3D[], spacing: number, scale = 1): Group {
   });
   return group;
 }
+const dish = buildDecor(MOON).pieces.find((piece) => piece.kind === "antenna")?.root ?? new Group();
+dish.position.set(0, 0, 0);
+dish.rotation.y = Math.PI + 0.5;
 const drillTool = laserDrill(3);
 drillTool.root.rotation.z = Math.PI / 2;
 drillTool.root.position.y = 0.6;
@@ -87,6 +92,7 @@ const exhibits: Record<string, Exhibit> = {
   pod: { object: landerModel().root, close: [4, 2, 1], animate: () => undefined },
   deposits: { object: row((["carbon", "clay", "ironOre", "heliumX"] as const).map((item, i) => depositModel(item, i + 3).root), 2), close: [6, 3, 0.5], animate: () => undefined },
   items: { object: row(ITEM_IDS.map((item) => itemModel(item)), 0.8, 2.5), close: [4.6, 2.2, 0.2], animate: () => undefined },
+  dish: { object: dish, close: [5, 2.8, 1.4], animate: () => undefined },
   tool: { object: drillTool.root, close: [2.6, 1.4, 0.6], animate: (time) => (drillTool.prongs.rotation.y = time * 6) },
 };
 const stage = new Group();

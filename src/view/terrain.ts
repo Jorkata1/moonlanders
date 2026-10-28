@@ -5,22 +5,17 @@ import {
   BufferAttribute,
   BufferGeometry,
   Color,
-  DodecahedronGeometry,
   Float32BufferAttribute,
   Group,
   IcosahedronGeometry,
   MeshBasicMaterial,
-  InstancedMesh,
-  Matrix4,
   Mesh,
   PlaneGeometry,
   Points,
   PointsMaterial,
-  Quaternion,
-  Vector3,
 } from "three";
 import type { PlanetDef, Point } from "../planets/types";
-import { flat } from "./materials";
+import { hash, noise, rock, scatter } from "./rocks";
 import { regolithNormalTexture, regolithTexture } from "./textures";
 
 const GROUND_SIZE = 110;
@@ -28,28 +23,6 @@ const GROUND_SEGMENTS = 240;
 const WARM_DUST = new Color(0x8a7462);
 const COOL_DUST = new Color(0x55607e);
 const EDGE_RISE = 0.55;
-/** Pebbles and small rocks strewn over the map. */
-const SCATTER_COUNT = 520;
-
-function hash(x: number, z: number): number {
-  const s = Math.sin(x * 127.1 + z * 311.7) * 43758.5453;
-  return s - Math.floor(s);
-}
-
-/** Smooth value noise in 0..1. */
-function noise(x: number, z: number): number {
-  const ix = Math.floor(x);
-  const iz = Math.floor(z);
-  const fx = x - ix;
-  const fz = z - iz;
-  const u = fx * fx * (3 - 2 * fx);
-  const v = fz * fz * (3 - 2 * fz);
-  const a = hash(ix, iz);
-  const b = hash(ix + 1, iz);
-  const c = hash(ix, iz + 1);
-  const d = hash(ix + 1, iz + 1);
-  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
-}
 
 function outsideDistance(planet: PlanetDef, x: number, z: number): number {
   const { minX, maxX, minZ, maxZ } = planet.bounds;
@@ -159,29 +132,6 @@ function ground(planet: PlanetDef): Mesh {
   return mesh;
 }
 
-/** Rock shades come in a few steps so rocks share materials and bake into few draw calls. */
-const ROCK_SHADES = [0.82, 0.92, 1.02, 1.12] as const;
-
-function rock(planet: PlanetDef, scale: number, seed: number): Mesh {
-  const geometry = new IcosahedronGeometry(1, 2);
-  const position = geometry.getAttribute("position") as BufferAttribute;
-  for (let i = 0; i < position.count; i += 1) {
-    const x = position.getX(i);
-    const y = position.getY(i);
-    const z = position.getZ(i);
-    // Displace by position-based noise so shared corners move together and the rock stays closed.
-    const jitter = 0.74 + noise(x * 1.7 + seed, z * 1.7 + y * 1.3) * 0.42 + noise(x * 4.1 + seed, y * 4.1 - z) * 0.12;
-    position.setXYZ(i, x * jitter, y * jitter * 0.72, z * jitter);
-  }
-  geometry.computeVertexNormals();
-  const step = ROCK_SHADES[Math.floor(hash(seed, 7) * ROCK_SHADES.length)] ?? 1;
-  const shade = new Color(planet.palette.rock).multiplyScalar(step);
-  const mesh = new Mesh(geometry, flat(shade.getHex(), 0.95));
-  mesh.scale.setScalar(scale);
-  mesh.rotation.set(hash(seed, 1) * 0.6, hash(seed, 2) * Math.PI * 2, hash(seed, 3) * 0.6);
-  return mesh;
-}
-
 export interface RidgeView {
   readonly root: Group;
   /** Boulders that block the gap until the drill bores through. */
@@ -219,33 +169,6 @@ function ridge(planet: PlanetDef): RidgeView {
     }
   });
   return { root, gapBoulders };
-}
-
-/** Scattered pebbles and rocks as one instanced mesh, avoiding gameplay spots. */
-function scatter(planet: PlanetDef, keepClear: readonly (Point & { radius: number })[]): InstancedMesh {
-  const geometry = new DodecahedronGeometry(1, 0);
-  const mesh = new InstancedMesh(geometry, flat(planet.palette.rock, 0.95), SCATTER_COUNT);
-  const matrix = new Matrix4();
-  const rotation = new Quaternion();
-  const scale = new Vector3();
-  const position = new Vector3();
-  let placed = 0;
-  for (let i = 0; placed < mesh.count && i < 4000; i += 1) {
-    const x = planet.bounds.minX - 8 + hash(i, 1.3) * (planet.bounds.maxX - planet.bounds.minX + 16);
-    const z = planet.bounds.minZ - 8 + hash(i, 2.7) * (planet.bounds.maxZ - planet.bounds.minZ + 16);
-    if (keepClear.some((p) => Math.hypot(p.x - x, p.z - z) < p.radius)) continue;
-    if (Math.abs(z - planet.ridge.z) < 3) continue;
-    const size = 0.06 + hash(i, 4.1) ** 3 * 0.55;
-    position.set(x, heightAt(planet, x, z) + size * 0.2, z);
-    rotation.setFromAxisAngle(new Vector3(hash(i, 5), 1, hash(i, 6)).normalize(), hash(i, 7) * Math.PI * 2);
-    scale.set(size, size * 0.7, size * (0.8 + hash(i, 8) * 0.5));
-    mesh.setMatrixAt(placed, matrix.compose(position, rotation, scale));
-    placed += 1;
-  }
-  mesh.count = placed;
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  return mesh;
 }
 
 function starfield(count: number): Points {
@@ -300,7 +223,7 @@ export interface TerrainView {
 export function buildTerrain(planet: PlanetDef, keepClear: readonly (Point & { radius: number })[]): TerrainView {
   const root = new Group();
   const ridgeView = ridge(planet);
-  root.add(ground(planet), ridgeView.root, scatter(planet, keepClear), starfield(planet.scenery.starCount), earth());
+  root.add(ground(planet), ridgeView.root, ...scatter(planet, keepClear, (x, z) => heightAt(planet, x, z)), starfield(planet.scenery.starCount), earth());
   // A few big boulders along the map edge frame the playfield.
   let seed = 200;
   for (const [x, z, s] of planet.scenery.edgeBoulders) {

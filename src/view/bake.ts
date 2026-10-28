@@ -17,7 +17,7 @@ export function bakeStatic(root: Object3D): void {
     if (!(node instanceof Mesh) || node instanceof InstancedMesh || Array.isArray(node.material) || !node.visible) return;
     const material = node.material as Material;
     if (material.transparent) return;
-    const geometry = prepare(node.geometry, new Matrix4().multiplyMatrices(toLocal, node.matrixWorld));
+    const geometry = prepare(node.geometry, new Matrix4().multiplyMatrices(toLocal, node.matrixWorld), material.vertexColors);
     if (!geometry) return;
     const key = `${material.uuid}|${node.castShadow}`;
     const bucket = buckets.get(key) ?? { material, castShadow: node.castShadow, geometries: [], meshes: [] };
@@ -40,13 +40,13 @@ export function bakeStatic(root: Object3D): void {
   }
 }
 
-/** World-transformed, non-indexed copy with exactly position, normal and uv, so all pieces merge. */
-function prepare(source: BufferGeometry, matrix: Matrix4): BufferGeometry | null {
+/** World-transformed, non-indexed copy with exactly position, normal and uv (and colour for vertex-coloured materials), so all pieces merge. */
+function prepare(source: BufferGeometry, matrix: Matrix4, keepColor: boolean): BufferGeometry | null {
   const position = source.getAttribute("position");
   if (!position) return null;
   const geometry = (source.index ? source.toNonIndexed() : source.clone()) as BufferGeometry;
   for (const name of Object.keys(geometry.attributes)) {
-    if (name !== "position" && name !== "normal" && name !== "uv") geometry.deleteAttribute(name);
+    if (name !== "position" && name !== "normal" && name !== "uv" && !(keepColor && name === "color")) geometry.deleteAttribute(name);
   }
   if (!geometry.getAttribute("normal")) geometry.computeVertexNormals();
   if (!geometry.getAttribute("uv")) geometry.setAttribute("uv", new Float32BufferAttribute(new Float32Array((geometry.getAttribute("position") as BufferAttribute).count * 2), 2));
