@@ -43,7 +43,8 @@ src/
     events.ts         SimEvent union, the only channel from sim to view/audio
   view/               Three.js rendering
     world.ts          builds the scene and syncs it from state every frame
-    terrain.ts        heightAt(), the levelled ground under buildings, the three-row boulder ridge, rocks, stars
+    terrain.ts        heightAt(), the levelled ground under buildings, the boulder ridge with talus, edge boulders, stars, Earth
+    rocks.ts          fractured, weathered rock shapes (crisp fracture edges, crack normal map, strata and dust colours) and scattered pebbles
     deposits.ts       carbon, clay, iron ore and Helium X rock models
     items.ts          carried/stacked item models and the item pool
     kit.ts            model-building helpers and finishes: lathe bodies, pipes, bolt rings, plating/hazard/fabric textures
@@ -61,7 +62,7 @@ src/
     drillRig.ts       the mining drill: boom extends into the ridge while boring
     pads.ts           sci-fi hex pads: LED ring (progress on pay pads), hologram icon, price board
     holograms.ts      the spinning hologram icons above pads
-    decor.ts          solar farm, antenna, lamps, crates, fuel tanks, crash debris and cables; each piece is its own root so the intro can unfold it
+    decor.ts          solar farm, sweeping satellite dish, lamps, crates, fuel tanks, crash debris and cables; each piece is its own root so the intro can unfold it
     droneModel.ts     the cargo drone: teardrop body, ducted fans, underglow ring, claw cradle
     drones.ts         cargo drone animation, stacks and dock
     rocket.ts         the crashed rocket: plated hull, porthole, fins, landing legs, engine bell, a jump-drive ring that lights up as materials arrive, scaffold, smoke
