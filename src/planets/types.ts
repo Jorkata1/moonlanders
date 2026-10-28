@@ -27,7 +27,7 @@ export interface MachineDef extends Point {
   readonly outputPad: Point;
 }
 
-export type UnlockKind = "machine" | "workshop" | "path" | "robot";
+export type UnlockKind = "machine" | "workshop" | "path" | "robot" | "drone";
 
 export interface UnlockDef extends Point {
   readonly id: string;
@@ -36,7 +36,7 @@ export interface UnlockDef extends Point {
   readonly cost: number;
   /** All of these must be unlocked before this pad appears. */
   readonly requires: readonly string[];
-  /** Machine id for machine and robot unlocks. */
+  /** Machine id for machine, robot and drone unlocks (a drone sells that machine's output). */
   readonly machineId?: string;
 }
 
@@ -119,12 +119,12 @@ export interface PlanetDef {
   readonly machines: readonly MachineDef[];
   readonly unlocks: readonly UnlockDef[];
   readonly objectives: readonly ObjectiveDef[];
-  /** Meteor showers start once this unlock is bought; each impact leaves a chunk of `reward`. */
-  readonly meteors: { readonly after: string; readonly reward: ItemId } | null;
   /** Dust storms start once this unlock is bought. */
   readonly storms: { readonly after: string } | null;
   readonly scenery: SceneryDef;
   readonly route: RouteCardDef;
   /** Captions for the pod-landing cinematic when the player arrives. */
   readonly arrivalCaptions: readonly string[];
+  /** Which ambient soundtrack plays here. */
+  readonly music: "moon" | "mars";
 }

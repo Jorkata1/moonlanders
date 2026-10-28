@@ -1,76 +1,132 @@
-import { AdditiveBlending, CircleGeometry, CylinderGeometry, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, RingGeometry } from "three";
+import { AdditiveBlending, BoxGeometry, CylinderGeometry, Group, Mesh, MeshBasicMaterial, type Material } from "three";
 import { PADS } from "../config";
-import { createLabel, iconDecal, type Label } from "./labels";
+import { bakeStatic } from "./bake";
+import { hologram, type HologramIcon } from "./holograms";
+import { createLabel, type Label } from "./labels";
+import { LOOK, glow, surface } from "./materials";
 
-const PAD_Y = 0.05;
+const LED_COUNT = 12;
+const HOLOGRAM_HEIGHT = 1.0;
+const PRICE_BOARD_WIDTH = 2.5;
+const HOLOGRAM_SCALE = 1.55;
 
 export type PadStyle = "pay" | "sell" | "input" | "output" | "rocket" | "workshop";
 
-const STYLES: Record<PadStyle, { icon: string; ring: string; fill: string; glow: number }> = {
-  pay: { icon: "$", ring: "#ffd25a", fill: "rgba(40, 32, 8, 0.85)", glow: 0xffd25a },
-  sell: { icon: "$", ring: "#5df2a0", fill: "rgba(8, 40, 26, 0.85)", glow: 0x5df2a0 },
-  input: { icon: "IN", ring: "#ff9a4a", fill: "rgba(44, 20, 6, 0.85)", glow: 0xff9a4a },
-  output: { icon: "OUT", ring: "#5df2a0", fill: "rgba(8, 40, 26, 0.85)", glow: 0x5df2a0 },
-  rocket: { icon: "▲", ring: "#4de3ff", fill: "rgba(6, 30, 44, 0.85)", glow: 0x4de3ff },
-  workshop: { icon: "⚙", ring: "#4de3ff", fill: "rgba(6, 30, 44, 0.85)", glow: 0x4de3ff },
+const STYLES: Record<PadStyle, { icon: HologramIcon; color: number }> = {
+  pay: { icon: "coin", color: 0xffd25a },
+  sell: { icon: "coin", color: 0x5df2a0 },
+  input: { icon: "in", color: 0xff9a4a },
+  output: { icon: "out", color: 0x5df2a0 },
+  rocket: { icon: "rocket", color: 0x4de3ff },
+  workshop: { icon: "wrench", color: 0x4de3ff },
 };
 
 export interface PadView {
   readonly root: Group;
   readonly label: Label;
-  /** 0..1 fill of the outer ring (payment progress). */
+  /** 0..1 of the rim lights lit (payment progress). Pads without progress leave it alone. */
   setProgress(ratio: number): void;
-  /** Pulse while the player stands on it. */
+  /** Lights chase round the rim and the hologram brightens while the player stands on it. */
   setActive(active: boolean, time: number): void;
 }
 
-export function createPad(style: PadStyle, radius: number = PADS.radius, labelHeight = 1.6, beam = false): PadView {
+const ledGeometry = new BoxGeometry(0.16, 0.05, 0.08);
+const ledOff = surface({ color: 0x1b2030, roughness: 0.5, metalness: 0.3 });
+
+interface Shared {
+  lit: Material;
+  glass: Material;
+  beam: MeshBasicMaterial;
+}
+
+const shared = new Map<number, Shared>();
+
+function materialsFor(color: number): Shared {
+  const cached = shared.get(color);
+  if (cached) return cached;
+  const created: Shared = {
+    lit: glow(color, 2.6),
+    glass: surface({ color: 0x0b1020, emissive: color, emissiveIntensity: 0.18, roughness: 0.2, metalness: 0.3, reflective: true, envMapIntensity: 0.6 }),
+    beam: new MeshBasicMaterial({ color, transparent: true, opacity: 0.1, blending: AdditiveBlending, depthWrite: false }),
+  };
+  shared.set(color, created);
+  return created;
+}
+
+/** Hexagonal metal plate with a glass inlay; merged into a few draw calls. */
+function platform(radius: number, glass: Material): Group {
+  const base = new Group();
+  base.add(new Mesh(new CylinderGeometry(radius, radius * 1.08, 0.14, 6), LOOK.dark()).translateY(0.07));
+  base.add(new Mesh(new CylinderGeometry(radius * 0.97, radius * 0.97, 0.04, 6), LOOK.steel()).translateY(0.15));
+  base.add(new Mesh(new CylinderGeometry(radius * 0.8, radius * 0.8, 0.03, 6), glass).translateY(0.175));
+  // Corner bolts.
+  for (let i = 0; i < 6; i += 1) {
+    const angle = (i / 6) * Math.PI * 2;
+    base.add(new Mesh(new CylinderGeometry(0.05, 0.05, 0.03, 8), LOOK.steel()).translateX(Math.sin(angle) * radius * 0.9).translateY(0.18).translateZ(Math.cos(angle) * radius * 0.9));
+  }
+  for (const piece of base.children) piece.receiveShadow = true;
+  bakeStatic(base);
+  return base;
+}
+
+/**
+ * A pad the player walks onto. `icon` overrides the style's hologram (e.g. a robot for a robot
+ * pad), and `withProgress` marks pay pads, whose rim lights fill up as credits flow in.
+ */
+export function createPad(style: PadStyle, radius: number = PADS.radius, labelHeight = 1.6, withProgress = false, icon?: HologramIcon): PadView {
   const root = new Group();
   const look = STYLES[style];
-  const decal = iconDecal(look.icon, look.ring, look.fill);
-  // Polygon offset keeps the decal on top of the ground instead of flickering into it.
-  const discMaterial = new MeshStandardMaterial({ map: decal, emissiveMap: decal, emissive: 0xffffff, emissiveIntensity: 0.55, transparent: true, roughness: 0.6, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
-  const disc = new Mesh(new CircleGeometry(radius, 48), discMaterial);
-  disc.rotation.x = -Math.PI / 2;
-  disc.position.y = PAD_Y;
-  disc.receiveShadow = true;
-  root.add(disc);
+  const materials = materialsFor(look.color);
+  root.add(platform(radius, materials.glass));
 
-  const progressMaterial = new MeshBasicMaterial({ color: look.glow, transparent: true, opacity: 0.95, depthWrite: false });
-  const progress = new Mesh(new RingGeometry(radius + 0.04, radius + 0.2, 64, 1, Math.PI / 2, 0.0001), progressMaterial);
-  progress.rotation.x = -Math.PI / 2;
-  progress.position.y = PAD_Y + 0.01;
-  root.add(progress);
-
-  let beamMesh: Mesh | null = null;
-  if (beam) {
-    const beamMaterial = new MeshBasicMaterial({ color: look.glow, transparent: true, opacity: 0.12, blending: AdditiveBlending, depthWrite: false });
-    beamMesh = new Mesh(new CylinderGeometry(radius * 0.9, radius, 2.4, 32, 1, true), beamMaterial);
-    beamMesh.position.y = 1.2;
-    root.add(beamMesh);
+  const leds: Mesh[] = [];
+  const ring = new Group();
+  ring.userData.dynamic = true;
+  for (let i = 0; i < LED_COUNT; i += 1) {
+    const angle = (i / LED_COUNT) * Math.PI * 2;
+    const led = new Mesh(ledGeometry, withProgress ? ledOff : materials.lit);
+    led.position.set(Math.sin(angle) * radius * 0.885, 0.19, Math.cos(angle) * radius * 0.885);
+    led.rotation.y = angle;
+    leds.push(led);
+    ring.add(led);
   }
+  root.add(ring);
 
-  const label = createLabel();
+  const holo = new Group();
+  holo.userData.dynamic = true;
+  holo.position.y = HOLOGRAM_HEIGHT;
+  const icon3d = hologram(icon ?? look.icon, look.color);
+  icon3d.scale.setScalar(HOLOGRAM_SCALE);
+  holo.add(icon3d);
+  const beam = new Mesh(new CylinderGeometry(0.22, radius * 0.55, HOLOGRAM_HEIGHT - 0.2, 18, 1, true), materials.beam);
+  beam.position.y = 0.2 + (HOLOGRAM_HEIGHT - 0.2) / 2;
+  beam.userData.dynamic = true;
+  root.add(holo, beam);
+
+  const label = createLabel(PRICE_BOARD_WIDTH);
   label.sprite.position.y = labelHeight;
   root.add(label.sprite);
 
-  let lastRatio = -1;
+  let litCount = withProgress ? 0 : LED_COUNT;
   return {
     root,
     label,
     setProgress(ratio) {
-      const clamped = Math.min(1, Math.max(0, ratio));
-      if (Math.abs(clamped - lastRatio) < 0.004) return;
-      lastRatio = clamped;
-      progress.geometry.dispose();
-      progress.geometry = new RingGeometry(radius + 0.04, radius + 0.2, 64, 1, Math.PI / 2, Math.max(0.0001, clamped * Math.PI * 2));
+      if (!withProgress) return;
+      const next = Math.round(Math.min(1, Math.max(0, ratio)) * LED_COUNT);
+      if (next === litCount) return;
+      litCount = next;
+      leds.forEach((led, i) => (led.material = i < litCount ? materials.lit : ledOff));
     },
     setActive(active, time) {
-      discMaterial.emissiveIntensity = active ? 0.9 + Math.sin(time * 10) * 0.25 : 0.55;
-      if (beamMesh) {
-        (beamMesh.material as MeshBasicMaterial).opacity = 0.08 + Math.sin(time * 2.5) * 0.04 + (active ? 0.1 : 0);
-        beamMesh.rotation.y = time * 0.5;
-      }
+      holo.rotation.y = time * (active ? 2.6 : 1.1);
+      holo.position.y = HOLOGRAM_HEIGHT + Math.sin(time * 2.2) * 0.06;
+      holo.scale.setScalar(active ? 1.2 : 1);
+      materials.beam.opacity = active ? 0.2 : 0.1;
+      if (withProgress) return;
+      // A dark gap chases round the rim while someone stands on the pad.
+      const gap = active ? Math.floor(time * 14) % LED_COUNT : -1;
+      leds.forEach((led, i) => (led.material = i === gap || i === (gap + 1) % LED_COUNT ? ledOff : materials.lit));
     },
   };
 }

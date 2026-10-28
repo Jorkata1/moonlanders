@@ -25,7 +25,7 @@ export function colliders(state: GameState): Circle[] {
     if (state.unlocked.has(machine.id)) solids.push({ x: machine.x, z: machine.z, radius: MACHINE.colliderRadius });
   }
   for (const deposit of state.deposits) {
-    if (deposit.amount > 0 || !deposit.temporary) solids.push({ x: deposit.x, z: deposit.z, radius: DEPOSIT.radius });
+    if (deposit.amount > 0) solids.push({ x: deposit.x, z: deposit.z, radius: DEPOSIT.radius });
   }
   solids.push({ x: state.planet.rocket.x, z: state.planet.rocket.z, radius: ROCKET_RADIUS });
   solids.push({ x: state.planet.trader.x, z: state.planet.trader.z, radius: TRADER_RADIUS });

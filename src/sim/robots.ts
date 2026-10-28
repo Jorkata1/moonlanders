@@ -1,7 +1,8 @@
 import { MACHINE, ROBOT, robotCapacityFor, robotMineIntervalFor, robotSpeedFor } from "../config";
 import type { MachineDef, Point } from "../planets/types";
 import type { Emit } from "./events";
-import { nearestMinableDeposit, takeFromDeposit } from "./economy";
+import { nearestMinableDeposit } from "./economy";
+import { takeFromDeposit } from "./orefall";
 import type { GameState, RobotState } from "./state";
 
 const ARRIVE_DISTANCE = 0.15;
@@ -72,7 +73,7 @@ function updateRobot(state: GameState, robot: RobotState, dt: number, emit: Emit
       robot.timer += dt;
       if (robot.timer < robotMineIntervalFor(levels.mining)) return;
       robot.timer = 0;
-      takeFromDeposit(state, deposit);
+      takeFromDeposit(deposit);
       robot.carry += 1;
       emit({ type: "mined", item: deposit.item, from: deposit, robotId: robot.id });
       if (robot.carry >= capacity) robot.phase = "toMachine";
@@ -96,7 +97,7 @@ function updateRobot(state: GameState, robot: RobotState, dt: number, emit: Emit
       robot.timer = 0;
       robot.carry -= 1;
       machine.input += 1;
-      emit({ type: "robotUnloaded", robotId: robot.id, item: def.input, to: def });
+      emit({ type: "robotUnloaded", robotId: robot.id, item: def.input, to: def.inputPad, machineId: def.id });
     }
   }
 }

@@ -5,9 +5,9 @@ import { build } from "esbuild";
 import { watch } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
+import { assemblePage } from "./page.mjs";
 
 const CRAZYGAMES_SDK_URL = "https://sdk.crazygames.com/crazygames-sdk-v3.js";
-const SCRIPT_PLACEHOLDER = "/*__GAME_SCRIPT__*/";
 const BODY_START = '<canvas id="view"';
 const DEV_PORT = 5173;
 const REBUILD_DELAY_MS = 120;
@@ -23,11 +23,9 @@ async function buildOnce({ minify }) {
     target: ["es2020"],
     write: false,
   });
-  const script = result.outputFiles[0].text.replaceAll("</script", "<\\/script");
-  const page = await readFile("src/page.html", "utf8");
-  if (!page.includes(SCRIPT_PLACEHOLDER)) throw new Error("page.html is missing the script placeholder");
-  if (!page.includes(BODY_START)) throw new Error("page.html is missing the game canvas");
-  const body = page.replace(SCRIPT_PLACEHOLDER, () => script);
+  const script = result.outputFiles[0].text;
+  const body = await assemblePage(script);
+  if (!body.includes(BODY_START)) throw new Error("page.html is missing the game canvas");
 
   await mkdir("dist/crazygames", { recursive: true });
 

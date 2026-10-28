@@ -1,4 +1,5 @@
 import { createAudio } from "./audio";
+import { setVibrationEnabled } from "./haptics";
 import { createGame, type Game } from "./game";
 import { createHud } from "./hud";
 import { createMoveControls } from "./input";
@@ -7,23 +8,13 @@ import { celebrate, initPlatform, readSave, showRewardedAd, signalLoadingFinishe
 import { detectQuality } from "./quality";
 import { completeText, renderRoute, startEyebrow, startText, totalMined } from "./screens";
 import { restoreGame, toSave } from "./sim/save";
+import { arrivalSeen, loadSettings, SETTINGS_KEY } from "./settings";
 import { createState, type GameState } from "./sim/state";
 import { startNextPlanet } from "./sim/travel";
 
 const SAVE_KEY = "starhop.save.v1";
-const SETTINGS_KEY = "starhop.settings.v1";
 
 type Phase = "menu" | "playing" | "paused" | "complete";
-
-interface Settings {
-  muted: boolean;
-  /** The Moon's opening cinematic has been watched. */
-  introSeen: boolean;
-  /** Planets (other than the Moon) whose arrival cinematic has been watched. */
-  arrivals: string[];
-  tutorialDone: boolean;
-  tips: string[];
-}
 
 function requireElement<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -50,26 +41,8 @@ function loadState(): GameState {
   }
 }
 
-function strings(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
-}
-
-function loadSettings(): Settings {
-  try {
-    const data = JSON.parse(readSave(SETTINGS_KEY) ?? "{}") as Record<string, unknown>;
-    return { muted: data.muted === true, introSeen: data.introSeen === true, arrivals: strings(data.arrivals), tutorialDone: data.tutorialDone === true, tips: strings(data.tips) };
-  } catch (error) {
-    console.error(JSON.stringify({ scope: "settings", action: "parse", message: String(error) }));
-    return { muted: false, introSeen: false, arrivals: [], tutorialDone: false, tips: [] };
-  }
-}
-
 function hasProgress(state: GameState): boolean {
   return state.stats.earned > 0 || state.unlocked.size > 0 || totalMined(state) > 0;
-}
-
-function arrivalSeen(settings: Settings, planetId: string): boolean {
-  return planetId === PLANETS[0]?.id ? settings.introSeen : settings.arrivals.includes(planetId);
 }
 
 async function boot(): Promise<void> {
@@ -83,13 +56,17 @@ async function boot(): Promise<void> {
   const canvas = requireElement<HTMLCanvasElement>("view");
   const controls = createMoveControls(canvas, requireElement("joystick"), requireElement("joystick-knob"));
   const hud = createHud();
-  const audio = createAudio(settings.muted);
+  const audio = createAudio(settings.muted, settings.music);
+  setVibrationEnabled(settings.vibration);
   const startScreen = requireElement<HTMLElement>("start-screen");
   const pauseScreen = requireElement<HTMLElement>("pause-screen");
   const completeScreen = requireElement<HTMLElement>("complete-screen");
   const startButton = requireElement<HTMLButtonElement>("start-button");
   const resetButton = requireElement<HTMLButtonElement>("reset-button");
   const muteButton = requireElement<HTMLButtonElement>("mute-button");
+  const musicButton = requireElement<HTMLButtonElement>("music-button");
+  const musicSetting = requireElement<HTMLButtonElement>("music-setting");
+  const vibrationSetting = requireElement<HTMLButtonElement>("vibration-setting");
 
   const save = () => writeSave(SAVE_KEY, JSON.stringify(toSave(state)));
   const saveSettings = () => writeSave(SETTINGS_KEY, JSON.stringify(settings));
@@ -127,6 +104,7 @@ async function boot(): Promise<void> {
   }
 
   function buildGame(): Game {
+    audio.setMood(state.planet.music);
     canvas.setAttribute("aria-label", `Starhop: your astronaut on ${state.planet.phrase}, seen from above`);
     return createGame(
       canvas,
@@ -135,7 +113,7 @@ async function boot(): Promise<void> {
       controls,
       hud,
       audio,
-      { playIntro: !arrivalSeen(settings, state.planet.id) && !hasProgress(state), tutorialDone: settings.tutorialDone, seenTips: new Set(settings.tips), touch: isTouch },
+      { playIntro: !arrivalSeen(settings, state.planet.id) && !hasProgress(state), fullIntro: state.planet.id === PLANETS[0]?.id, tutorialDone: settings.tutorialDone, seenTips: new Set(settings.tips), touch: isTouch },
       {
         onSave: save,
         onLaunched: travelOn,
@@ -197,11 +175,25 @@ async function boot(): Promise<void> {
     startButton.focus();
   }
 
-  function renderMute(): void {
+  function renderSound(): void {
     const muted = audio.isMuted();
     muteButton.setAttribute("aria-pressed", String(muted));
     muteButton.setAttribute("aria-label", muted ? "Turn sound on" : "Mute sound");
     muteButton.dataset.muted = String(muted);
+    const music = audio.isMusicOn();
+    musicButton.setAttribute("aria-pressed", String(music));
+    musicButton.setAttribute("aria-label", music ? "Turn music off" : "Turn music on");
+    musicButton.dataset.on = String(music);
+    musicSetting.setAttribute("aria-checked", String(music));
+    vibrationSetting.setAttribute("aria-checked", String(settings.vibration));
+  }
+
+  function toggleMusic(): void {
+    audio.unlock();
+    audio.setMusic(!audio.isMusicOn());
+    settings.music = audio.isMusicOn();
+    saveSettings();
+    renderSound();
   }
 
   startButton.addEventListener("click", play);
@@ -221,14 +213,33 @@ async function boot(): Promise<void> {
     audio.setMuted(!audio.isMuted());
     settings.muted = audio.isMuted();
     saveSettings();
-    renderMute();
+    renderSound();
+  });
+  musicButton.addEventListener("click", toggleMusic);
+  musicSetting.addEventListener("click", toggleMusic);
+  // Desktop Chrome reports vibration support too, so only offer the switch on touch devices.
+  vibrationSetting.hidden = !isTouch || typeof navigator.vibrate !== "function";
+  vibrationSetting.addEventListener("click", () => {
+    settings.vibration = !settings.vibration;
+    setVibrationEnabled(settings.vibration);
+    saveSettings();
+    renderSound();
   });
   hud.onBuy((key, id) => game.buy(key, id));
+  hud.onToggle((key) => game.toggle(key));
   hud.onDrop((item) => game.drop(item));
   hud.onCoachOk(() => game.acknowledgeCoach());
   hud.onSkipIntro(() => game.skipIntro());
   hud.onTurbo(() => {
-    void game.requestTurbo(showRewardedAd).then(() => {
+    const watchAd = async (): Promise<boolean> => {
+      audio.setDucked(true);
+      try {
+        return await showRewardedAd();
+      } finally {
+        audio.setDucked(false);
+      }
+    };
+    void game.requestTurbo(watchAd).then(() => {
       if (phase === "playing") startGameplay();
     });
   });
@@ -245,7 +256,7 @@ async function boot(): Promise<void> {
   });
   window.addEventListener("pagehide", save);
 
-  renderMute();
+  renderSound();
   game.setRunning(false);
   if (state.launched) showComplete();
   else showStart();

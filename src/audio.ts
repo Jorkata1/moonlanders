@@ -1,6 +1,8 @@
 /** Tiny synthesised sound kit — no audio files to load or license. */
 
-export type Cue = "mine" | "pickup" | "drop" | "coin" | "pay" | "build" | "error" | "warning" | "impact" | "alarm" | "objective" | "upgrade" | "launch" | "wind";
+import { createMusic, type Music, type MusicMood } from "./music";
+
+export type Cue = "mine" | "pickup" | "drop" | "coin" | "pay" | "build" | "error" | "warning" | "impact" | "alarm" | "objective" | "upgrade" | "launch" | "wind" | "thud";
 
 interface Tone {
   frequency: number;
@@ -31,6 +33,7 @@ const CUES: Record<Cue, Tone[]> = {
     { frequency: 880, endFrequency: 660, duration: 0.18, type: "sawtooth", gain: 0.06, delay: 0.25 },
   ],
   impact: [{ frequency: 120, endFrequency: 40, duration: 0.6, type: "sawtooth", gain: 0.22 }],
+  thud: [{ frequency: 95, endFrequency: 45, duration: 0.28, type: "sine", gain: 0.2 }],
   alarm: [
     { frequency: 660, duration: 0.12, type: "square", gain: 0.06 },
     { frequency: 660, duration: 0.12, type: "square", gain: 0.06, delay: 0.2 },
@@ -56,13 +59,28 @@ export interface AudioKit {
   setHum(level: number): void;
   setMuted(muted: boolean): void;
   readonly isMuted: () => boolean;
+  setMusic(on: boolean): void;
+  readonly isMusicOn: () => boolean;
+  setMood(mood: MusicMood): void;
+  /** Silence everything while an ad plays, without touching the player's own settings. */
+  setDucked(ducked: boolean): void;
 }
 
-export function createAudio(initiallyMuted: boolean): AudioKit {
+const MASTER_LEVEL = 0.8;
+
+export function createAudio(initiallyMuted: boolean, initiallyMusic: boolean): AudioKit {
   let context: AudioContext | null = null;
   let master: GainNode | null = null;
   let humGain: GainNode | null = null;
+  let music: Music | null = null;
   let muted = initiallyMuted;
+  let musicOn = initiallyMusic;
+  let ducked = false;
+  let mood: MusicMood = "moon";
+
+  function applyMaster(): void {
+    if (context && master) master.gain.setTargetAtTime(muted || ducked ? 0 : MASTER_LEVEL, context.currentTime, 0.05);
+  }
 
   function startHum(ctx: AudioContext, destination: AudioNode): GainNode {
     const buffer = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
@@ -89,9 +107,10 @@ export function createAudio(initiallyMuted: boolean): AudioKit {
     try {
       context = new AudioContext();
       master = context.createGain();
-      master.gain.value = muted ? 0 : 0.8;
+      master.gain.value = muted || ducked ? 0 : MASTER_LEVEL;
       master.connect(context.destination);
       humGain = startHum(context, master);
+      music = createMusic(context, master, musicOn, mood);
     } catch (error) {
       console.warn(JSON.stringify({ scope: "audio", message: String(error) }));
       context = null;
@@ -99,7 +118,7 @@ export function createAudio(initiallyMuted: boolean): AudioKit {
   }
 
   function play(cue: Cue): void {
-    if (!context || !master || muted) return;
+    if (!context || !master || muted || ducked) return;
     const now = context.currentTime;
     for (const tone of CUES[cue]) {
       const start = now + (tone.delay ?? 0);
@@ -125,8 +144,21 @@ export function createAudio(initiallyMuted: boolean): AudioKit {
     },
     setMuted(next: boolean) {
       muted = next;
-      if (context && master) master.gain.setTargetAtTime(muted ? 0 : 0.8, context.currentTime, 0.05);
+      applyMaster();
     },
     isMuted: () => muted,
+    setMusic(next: boolean) {
+      musicOn = next;
+      music?.setEnabled(next);
+    },
+    isMusicOn: () => musicOn,
+    setMood(next: MusicMood) {
+      mood = next;
+      music?.setMood(next);
+    },
+    setDucked(next: boolean) {
+      ducked = next;
+      applyMaster();
+    },
   };
 }

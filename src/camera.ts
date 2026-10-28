@@ -3,9 +3,12 @@ import { Vector3, type PerspectiveCamera } from "three";
 const FOLLOW_RATE = 6;
 const LAUNCH_OFFSET = new Vector3(7, 2.2, 9);
 
-/** Normal play: trail the player from above and behind. Returns the remaining shake. */
-export function followShot(camera: PerspectiveCamera, target: Vector3, player: { x: number; z: number }, offset: Vector3, dt: number, shake: number): number {
-  target.lerp(new Vector3(player.x, 0, player.z), Math.min(1, dt * FOLLOW_RATE));
+/**
+ * Normal play: trail the player from above and behind. Returns the remaining shake.
+ * `lift` aims that far south of the player, which raises them on screen (above a bottom sheet).
+ */
+export function followShot(camera: PerspectiveCamera, target: Vector3, player: { x: number; z: number }, offset: Vector3, lift: number, dt: number, shake: number): number {
+  target.lerp(new Vector3(player.x, 0, player.z + lift), Math.min(1, dt * FOLLOW_RATE));
   camera.position.copy(target).add(offset);
   if (shake > 0) {
     camera.position.x += (Math.random() - 0.5) * shake;

@@ -3,6 +3,7 @@ import { carryCapacity } from "./sim/economy";
 import { carriedCounts } from "./sim/inventory";
 import { isInsideDome } from "./sim/hazards";
 import { isStormRaging, type GameState } from "./sim/state";
+import { upgradeIconSvg, type UpgradeIcon } from "./upgradeIcons";
 
 const TOAST_MS = 2600;
 
@@ -21,6 +22,7 @@ export type TurboState = "ready" | "loading" | "active";
 
 export interface UpgradeRow {
   id: string;
+  icon: UpgradeIcon;
   name: string;
   description: string;
   level: number;
@@ -30,10 +32,12 @@ export interface UpgradeRow {
 }
 
 export interface UpgradePanel {
-  /** Identifies whose upgrades these are (workshop, or a robot id). */
+  /** Identifies whose upgrades these are (workshop, or a robot or drone id). */
   key: string;
   title: string;
   rows: UpgradeRow[];
+  /** On/off switch shown in the panel header, e.g. a drone's selling state. */
+  toggle?: { on: boolean; label: string };
 }
 
 export interface CoachCard {
@@ -54,6 +58,7 @@ export interface Hud {
   showIntro(visible: boolean): void;
   setIntroCaption(text: string | null): void;
   onBuy(handler: (key: string, id: string) => void): void;
+  onToggle(handler: (key: string) => void): void;
   onDrop(handler: (item: ItemId) => void): void;
   onTurbo(handler: () => void): void;
   onCoachOk(handler: () => void): void;
@@ -84,6 +89,10 @@ export function createHud(): Hud {
   const intro = requireElement<HTMLElement>("intro");
   const introCaption = requireElement<HTMLElement>("intro-caption");
   let buyHandler: (key: string, id: string) => void = () => undefined;
+  let toggleHandler: (key: string) => void = () => undefined;
+  const panelToggle = requireElement<HTMLButtonElement>("panel-toggle");
+  const panelToggleLabel = requireElement<HTMLElement>("panel-toggle-label");
+  panelToggle.addEventListener("click", () => toggleHandler(panelKey));
   let dropHandler: (item: ItemId) => void = () => undefined;
   let toastTimer = 0;
   let lastCredits = -1;
@@ -123,22 +132,29 @@ export function createHud(): Hud {
   }
 
   function renderPanel(next: UpgradePanel, money: number): void {
-    const signature = `${next.key}|${money}|${next.rows.map((r) => `${r.level}:${r.cost}`).join(",")}`;
+    const signature = `${next.key}|${money}|${next.toggle?.on ?? "-"}|${next.rows.map((r) => `${r.level}:${r.cost}`).join(",")}`;
     if (signature === panelSignature) return;
     panelSignature = signature;
     panelKey = next.key;
     panelTitle.textContent = next.title;
+    panelToggle.hidden = !next.toggle;
+    if (next.toggle) {
+      panelToggle.setAttribute("aria-pressed", String(next.toggle.on));
+      panelToggle.setAttribute("aria-label", next.toggle.on ? "Drone is selling. Pause it" : "Drone is paused. Start selling");
+      panelToggleLabel.textContent = next.toggle.label;
+    }
     upgradeList.replaceChildren(
       ...next.rows.map((row) => {
         const item = document.createElement("li");
         const button = document.createElement("button");
         button.type = "button";
         button.className = "upgrade";
-        button.innerHTML = `<span class="upgrade-name"></span><span class="upgrade-desc"></span><span class="upgrade-pips" aria-hidden="true"></span><span class="upgrade-cost"></span>`;
-        (button.children[0] as HTMLElement).textContent = row.name;
-        (button.children[1] as HTMLElement).textContent = row.description;
-        (button.children[2] as HTMLElement).textContent = "●".repeat(row.level) + "○".repeat(row.max - row.level);
-        (button.children[3] as HTMLElement).textContent = row.cost === null ? "MAX" : `◆ ${row.cost}`;
+        // The icon markup is a fixed constant; every row-supplied string goes in through textContent.
+        button.innerHTML = `${upgradeIconSvg(row.icon)}<span class="upgrade-name"></span><span class="upgrade-desc"></span><span class="upgrade-pips" aria-hidden="true"></span><span class="upgrade-cost"></span>`;
+        (button.children[1] as HTMLElement).textContent = row.name;
+        (button.children[2] as HTMLElement).textContent = row.description;
+        (button.children[3] as HTMLElement).textContent = "●".repeat(row.level) + "○".repeat(row.max - row.level);
+        (button.children[4] as HTMLElement).textContent = row.cost === null ? "MAX" : `◆ ${row.cost}`;
         button.disabled = row.cost === null || money < row.cost;
         button.setAttribute("aria-label", `${row.name}, level ${row.level} of ${row.max}. ${row.cost === null ? "Maxed out" : `Costs ${row.cost} credits`}`);
         button.addEventListener("click", () => buyHandler(panelKey, row.id));
@@ -241,6 +257,9 @@ export function createHud(): Hud {
     },
     onBuy(handler) {
       buyHandler = handler;
+    },
+    onToggle(handler) {
+      toggleHandler = handler;
     },
     onDrop(handler) {
       dropHandler = handler;

@@ -1,6 +1,8 @@
 import { DirectionalLight, Group, HemisphereLight, Vector3, type Object3D, type Scene } from "three";
 import { ITEMS, PADS, type ItemId } from "../config";
-import type { PlanetDef, Point } from "../planets/types";
+import type { PlanetDef, Point, UnlockKind } from "../planets/types";
+import type { HologramIcon } from "./holograms";
+import type { DropProp } from "../intro";
 import { isPadAvailable } from "../sim/economy";
 import { distance, rocketComplete, type GameState } from "../sim/state";
 import { bakeStatic } from "./bake";
@@ -18,6 +20,7 @@ import { buildTerrain, heightAt } from "./terrain";
 const SHADOW_EXTENT = 16;
 const SUN_OFFSET = new Vector3(-9, 18, 7);
 const POP_SECONDS = 0.6;
+const UNLOCK_ICONS: Record<UnlockKind, HologramIcon> = { machine: "gear", workshop: "wrench", path: "path", robot: "robot", drone: "drone" };
 
 export interface WorldView {
   sync(state: GameState, dt: number, time: number): void;
@@ -26,6 +29,11 @@ export interface WorldView {
   merchant: MerchantModel;
   storm: StormView;
   groundAt(point: Point): Vector3;
+  /** Animate an item riding a machine's belt in; see MachineViews.feed. */
+  feedMachine(machineId: string, second: boolean, delay: number): void;
+  onMachineIntake(handler: (at: Vector3, color: number) => void): void;
+  /** Everything the intro drops from orbit or grows in place, in their final positions. */
+  introProps(): DropProp[];
   /** Where the player stands to open a robot's upgrade panel. */
   robotDock(id: string): Point | null;
 }
@@ -66,7 +74,6 @@ export function buildWorld(scene: Scene, state: GameState, pool: ItemPool, shado
   const staticRoot = new Group();
   staticRoot.add(terrain.root, decor.root);
   bakeStatic(terrain.ridge.root);
-  bakeStatic(decor.root);
   scene.add(staticRoot);
 
   const dome = domeModel(planet.dome.radius);
@@ -84,7 +91,7 @@ export function buildWorld(scene: Scene, state: GameState, pool: ItemPool, shado
 
   const workshop = workshopModel();
   place(workshop, planet, planet.workshop);
-  const workshopSpot = { x: planet.workshop.x, z: planet.workshop.z + 0.6 };
+  const workshopSpot = { x: planet.workshop.x, z: planet.workshop.z + PADS.workshopOffset };
   const workshopPad = createPad("workshop", PADS.radius, 2.2);
   workshopPad.label.set("WORKSHOP", "Stand here to upgrade");
   place(workshopPad.root, planet, workshopSpot);
@@ -102,12 +109,12 @@ export function buildWorld(scene: Scene, state: GameState, pool: ItemPool, shado
   const payPads = new Map<string, PadView>();
   const docks = new Map<string, PadView>();
   for (const unlock of planet.unlocks) {
-    const pad = createPad("pay", PADS.radius, 2.2, true);
+    const pad = createPad("pay", PADS.radius, 2.0, true, UNLOCK_ICONS[unlock.kind]);
     place(pad.root, planet, unlock);
     scene.add(pad.root);
     payPads.set(unlock.id, pad);
-    if (unlock.kind !== "robot") continue;
-    const dock = createPad("workshop", PADS.radius, 1.6);
+    if (unlock.kind !== "robot" && unlock.kind !== "drone") continue;
+    const dock = createPad("workshop", PADS.radius, 1.6, false, UNLOCK_ICONS[unlock.kind]);
     dock.label.set(unlock.label.toUpperCase(), "Stand here to upgrade");
     place(dock.root, planet, unlock);
     scene.add(dock.root);
@@ -144,7 +151,10 @@ export function buildWorld(scene: Scene, state: GameState, pool: ItemPool, shado
       const dock = docks.get(unlock.id);
       if (dock) {
         dock.root.visible = state.unlocked.has(unlock.id);
-        dock.setActive(distance(state.player, unlock) <= PADS.radius, time);
+        const onDock = distance(state.player, unlock) <= PADS.radius;
+        dock.setActive(onDock, time);
+        // Once you stand on it the panel names it; the board would only sit behind your helmet.
+        dock.label.sprite.visible = !onDock;
       }
       if (!available) continue;
       const paid = state.paid.get(unlock.id) ?? 0;
@@ -154,7 +164,9 @@ export function buildWorld(scene: Scene, state: GameState, pool: ItemPool, shado
     }
     workshop.visible = state.unlocked.has("workshop");
     workshopPad.root.visible = workshop.visible;
-    workshopPad.setActive(distance(state.player, workshopSpot) <= PADS.radius, time);
+    const onWorkshop = distance(state.player, workshopSpot) <= PADS.radius;
+    workshopPad.setActive(onWorkshop, time);
+    workshopPad.label.sprite.visible = !onWorkshop;
     const arm = workshop.getObjectByName("arm");
     if (arm) arm.rotation.y = Math.sin(time * 0.8) * 0.8;
     sell.setActive(distance(state.player, planet.sellPad) <= PADS.radius, time);
@@ -168,10 +180,13 @@ export function buildWorld(scene: Scene, state: GameState, pool: ItemPool, shado
       live.add(deposit.id);
       let model = deposits.get(deposit.id);
       if (!model) {
-        model = depositModel(deposit.item, depositSeed++, deposit.temporary ? 3 : 5);
+        model = depositModel(deposit.item, depositSeed++, 5);
         place(model.root, planet, deposit);
+        model.root.rotation.y = depositSeed * 1.7;
         scene.add(model.root);
         deposits.set(deposit.id, model);
+        // Nodes that fell from the sky pop up out of their impact crater.
+        if (time > 0) pops.push({ object: model.root, t: 0 });
       }
       const reachable = deposit.zone === null || state.unlocked.has(deposit.zone);
       const drilled = state.player.miningTarget === deposit.id || state.robots.some((r) => r.phase === "mining" && r.depositId === deposit.id);
@@ -191,8 +206,26 @@ export function buildWorld(scene: Scene, state: GameState, pool: ItemPool, shado
     groundAt(point) {
       return new Vector3(point.x, heightAt(planet, point.x, point.z), point.z);
     },
+    introProps() {
+      const props: DropProp[] = [
+        { object: dome, kind: "dome" },
+        { object: rocket.root, kind: "rocket" },
+        { object: merchant.root, kind: "trader" },
+        ...decor.pieces.map((piece): DropProp => ({ object: piece.root, kind: piece.kind === "cable" ? "cable" : "decor" })),
+        { object: sell.root, kind: "pad" },
+        { object: rocketPad.root, kind: "pad" },
+        ...[...payPads.values(), ...docks.values()].map((pad): DropProp => ({ object: pad.root, kind: "pad" })),
+      ];
+      return props;
+    },
+    feedMachine(machineId, second, delay) {
+      machines.feed(machineId, second, delay);
+    },
+    onMachineIntake(handler) {
+      machines.onIntake(handler);
+    },
     robotDock(id) {
-      const unlock = planet.unlocks.find((u) => u.id === id && u.kind === "robot");
+      const unlock = planet.unlocks.find((u) => u.id === id && (u.kind === "robot" || u.kind === "drone"));
       return unlock ? { x: unlock.x, z: unlock.z } : null;
     },
     celebrateUnlock(id) {

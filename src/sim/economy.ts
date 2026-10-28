@@ -1,4 +1,5 @@
 import { BOOST, DEPOSIT, ITEMS, MACHINE, PADS, PLAYER, UPGRADES, capacityFor, mineIntervalFor, type ItemId, type UpgradeId } from "../config";
+import { takeFromDeposit } from "./orefall";
 import type { MachineDef, UnlockDef } from "../planets/types";
 import type { Emit } from "./events";
 import { distance, isAvailable, rocketComplete, rocketNeeds, type DepositState, type GameState } from "./state";
@@ -30,24 +31,6 @@ export function nearestMinableDeposit(state: GameState, x: number, z: number, it
   return best;
 }
 
-export function takeFromDeposit(state: GameState, deposit: DepositState): void {
-  deposit.amount -= 1;
-  if (deposit.amount <= 0 && !deposit.temporary) deposit.regrowTimer = DEPOSIT.regrowSeconds;
-}
-
-export function updateDeposits(state: GameState, dt: number): void {
-  for (const deposit of state.deposits) {
-    if (deposit.temporary) {
-      deposit.lifetime -= dt;
-      continue;
-    }
-    if (deposit.amount > 0) continue;
-    deposit.regrowTimer -= dt;
-    if (deposit.regrowTimer <= 0) deposit.amount = deposit.maxAmount;
-  }
-  state.deposits = state.deposits.filter((d) => !d.temporary || (d.amount > 0 && d.lifetime > 0));
-}
-
 export function updatePlayerMining(state: GameState, dt: number, emit: Emit): void {
   const player = state.player;
   player.miningTarget = null;
@@ -68,7 +51,7 @@ export function updatePlayerMining(state: GameState, dt: number, emit: Emit): vo
   const interval = mineIntervalFor(state.upgrades.mining);
   while (player.mineTimer >= interval && target.amount > 0 && player.carry.length < carryCapacity(state)) {
     player.mineTimer -= interval;
-    takeFromDeposit(state, target);
+    takeFromDeposit(target);
     player.carry.push(target.item);
     state.stats.mined[target.item] += 1;
     emit({ type: "mined", item: target.item, from: target, robotId: null });
@@ -131,7 +114,7 @@ function transferOnce(state: GameState, emit: Emit): boolean {
       if (index >= 0) {
         player.carry.splice(index, 1);
         machine.input += 1;
-        emit({ type: "delivered", item: def.input, to: def });
+        emit({ type: "delivered", item: def.input, to: def.inputPad, feed: { machineId: def.id, second: false } });
         return true;
       }
     }
@@ -141,7 +124,7 @@ function transferOnce(state: GameState, emit: Emit): boolean {
       if (index >= 0) {
         player.carry.splice(index, 1);
         machine.secondInput += 1;
-        emit({ type: "delivered", item: second.item, to: def });
+        emit({ type: "delivered", item: second.item, to: second.pad, feed: { machineId: def.id, second: true } });
         return true;
       }
     }

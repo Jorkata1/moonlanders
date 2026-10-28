@@ -1,137 +1,13 @@
-import {
-  CanvasTexture,
-  CylinderGeometry,
-  DoubleSide,
-  Group,
-  Mesh,
-  MeshStandardMaterial,
-  PointLight,
-  RepeatWrapping,
-  SphereGeometry,
-  Sprite,
-  SpriteMaterial,
-  TorusGeometry,
-} from "three";
+import { CylinderGeometry, Group, Mesh, MeshStandardMaterial, PointLight, SphereGeometry, TorusGeometry } from "three";
+import { base, beltMaterial, consolePanel, emitter, intake, outlet, type MachineModel } from "./machineParts";
 import { LOOK, box, glow, mesh, surface } from "./materials";
-import { canvasTexture, panelTexture } from "./textures";
+import { panelTexture } from "./textures";
 
-export interface MachineModel {
-  root: Group;
-  inputTray: Group;
-  /** Hopper for the second input, on machines that take two. */
-  secondTray?: Group;
-  outputTray: Group;
-  update(time: number, dt: number, working: boolean, progress: number): void;
-}
-
-function puffTexture(): CanvasTexture {
-  return canvasTexture("machine-puff", 64, 64, (ctx) => {
-    const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-    gradient.addColorStop(0, "rgba(255, 255, 255, 0.9)");
-    gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 64, 64);
-  });
-}
-
-export function beltMaterial(): MeshStandardMaterial {
-  const base = canvasTexture("conveyor-belt", 64, 64, (ctx) => {
-    ctx.fillStyle = "#23262e";
-    ctx.fillRect(0, 0, 64, 64);
-    ctx.fillStyle = "#3a3f4b";
-    for (let y = 0; y < 64; y += 16) ctx.fillRect(0, y, 64, 6);
-  });
-  const map = base.clone();
-  map.wrapS = RepeatWrapping;
-  map.wrapT = RepeatWrapping;
-  map.repeat.set(1, 4);
-  map.needsUpdate = true;
-  return new MeshStandardMaterial({ map, roughness: 0.8 });
-}
-
-/** Rising puffs (smoke, steam) that loop while a machine works. */
-export function emitter(root: Group, x: number, y: number, z: number, color: number, count: number, rise: number) {
-  const puffs: Sprite[] = [];
-  const holder = new Group();
-  holder.userData.dynamic = true;
-  root.add(holder);
-  for (let i = 0; i < count; i += 1) {
-    const sprite = new Sprite(new SpriteMaterial({ map: puffTexture(), color, transparent: true, depthWrite: false, opacity: 0 }));
-    sprite.position.set(x, y, z);
-    holder.add(sprite);
-    puffs.push(sprite);
-  }
-  let strength = 0;
-  return (time: number, dt: number, on: boolean) => {
-    strength += ((on ? 1 : 0) - strength) * Math.min(1, dt * 2);
-    puffs.forEach((puff, i) => {
-      const phase = (time * 0.45 + i / count) % 1;
-      puff.position.set(x + Math.sin(phase * 5 + i) * 0.15 * phase, y + phase * rise, z + Math.cos(phase * 4 + i) * 0.1 * phase);
-      puff.scale.setScalar(0.25 + phase * 0.9);
-      puff.material.opacity = (1 - phase) * 0.45 * strength;
-    });
-  };
-}
-
-export function base(root: Group): void {
-  root.add(box(2.6, 0.24, 2.4, LOOK.dark(), 0, 0.12, 0, 0.06));
-  root.add(box(2.66, 0.06, 2.46, glow(0xffc83d, 0.4), 0, 0.03, 0, 0.02));
-  for (const [x, z] of [[-1.15, -1.05], [1.15, -1.05], [-1.15, 1.05], [1.15, 1.05]] as const) {
-    root.add(mesh(new CylinderGeometry(0.1, 0.12, 0.08, 10), LOOK.steel(), x, 0.28, z));
-  }
-}
-
-/**
- * Belt from the input pad up into the hopper, and the hopper itself.
- * `side` 1 faces the front-left pad, -1 the back-left pad of two-input machines.
- */
-export function intake(root: Group, belt: MeshStandardMaterial, side: 1 | -1 = 1): Group {
-  const hopperZ = side === 1 ? 0.05 : -0.8;
-  const beltZ = side === 1 ? 0.75 : -1.4;
-  const legs = side === 1 ? [1.25, 0.45] : [-1.9, -1.1];
-  const conveyor = new Group();
-  conveyor.add(box(0.5, 0.06, 1.4, belt, 0, 0, 0, 0.01));
-  conveyor.add(box(0.06, 0.14, 1.4, LOOK.steel(), -0.28, 0.03, 0, 0.02));
-  conveyor.add(box(0.06, 0.14, 1.4, LOOK.steel(), 0.28, 0.03, 0, 0.02));
-  conveyor.position.set(-1.35, 0.75, beltZ);
-  conveyor.rotation.x = 0.55 * side;
-  root.add(conveyor);
-  for (const z of legs) root.add(box(0.08, 0.7, 0.08, LOOK.steel(), -1.35, 0.35, z, 0.02));
-  const funnelMaterial = LOOK.steel().clone();
-  funnelMaterial.side = DoubleSide;
-  root.add(mesh(new CylinderGeometry(0.55, 0.25, 0.55, 16, 1, true), funnelMaterial, -1.3, 1.4, hopperZ));
-  root.add(mesh(new TorusGeometry(0.55, 0.04, 6, 20), LOOK.orange(), -1.3, 1.67, hopperZ).rotateX(Math.PI / 2));
-  const tray = new Group();
-  tray.position.set(-1.3, 1.2, hopperZ);
-  tray.userData.dynamic = true;
-  root.add(tray);
-  return tray;
-}
-
-export function outlet(root: Group): Group {
-  root.add(box(1.0, 0.1, 0.9, LOOK.steel(), 1.35, 0.5, 0.85, 0.03));
-  root.add(box(1.0, 0.18, 0.06, LOOK.dark(), 1.35, 0.6, 1.28, 0.02));
-  root.add(box(0.06, 0.18, 0.9, LOOK.dark(), 1.83, 0.6, 0.85, 0.02));
-  const chute = box(0.4, 0.06, 0.8, LOOK.steel(), 1.0, 0.85, 0.15, 0.02);
-  chute.rotation.x = -0.5;
-  root.add(chute);
-  const tray = new Group();
-  tray.position.set(1.35, 0.56, 0.85);
-  tray.userData.dynamic = true;
-  root.add(tray);
-  return tray;
-}
-
-export function consolePanel(root: Group, x: number, z: number, screenColor: number): MeshStandardMaterial {
-  root.add(box(0.5, 0.7, 0.3, LOOK.panel(), x, 0.6, z, 0.04));
-  const screen = surface({ color: 0x0a1612, emissive: screenColor, emissiveIntensity: 1.4, roughness: 0.2, noShadow: true }).clone();
-  root.add(box(0.38, 0.24, 0.03, screen, x, 0.82, z + 0.16, 0.02).rotateX(-0.2));
-  return screen;
-}
+export type { MachineModel } from "./machineParts";
 
 export function smelterModel(): MachineModel {
   const root = new Group();
-  base(root);
+  const rig = base(root);
   const body = surface({ map: panelTexture("smelter-panels", "#8a4b2a", 4), roughness: 0.55, metalness: 0.3, reflective: true, envMapIntensity: 0.35 });
   root.add(box(1.7, 1.55, 1.5, body, 0.05, 1.0, -0.35, 0.12));
   root.add(box(1.8, 0.14, 1.6, LOOK.dark(), 0.05, 1.83, -0.35, 0.04));
@@ -160,8 +36,8 @@ export function smelterModel(): MachineModel {
   root.add(beacon);
 
   const belt = beltMaterial();
-  const inputTray = intake(root, belt);
-  const outputTray = outlet(root);
+  const input = intake(root, belt);
+  const output = outlet(root);
   const screen = consolePanel(root, 1.4, -0.75, 0x5df2a0);
 
   const glowLight = new PointLight(0xff7a2a, 0, 3.5, 2);
@@ -171,8 +47,11 @@ export function smelterModel(): MachineModel {
 
   return {
     root,
-    inputTray,
-    outputTray,
+    inputTray: input.tray,
+    inputPath: input.path,
+    outputTray: output.tray,
+    outputPath: output.path,
+    rig,
     update(time, dt, working, progress) {
       const flicker = Math.sin(time * 13) * 0.3 + Math.sin(time * 31) * 0.15;
       heat.emissiveIntensity = working ? 2.6 + flicker + progress : 0.5;
@@ -187,7 +66,7 @@ export function smelterModel(): MachineModel {
 
 export function purifierModel(): MachineModel {
   const root = new Group();
-  base(root);
+  const rig = base(root);
   const glass = new MeshStandardMaterial({ color: 0xbfefff, transparent: true, opacity: 0.22, roughness: 0.05, metalness: 0.1, depthWrite: false });
   glass.userData.reflective = true;
   const water = surface({ color: 0x3aa8ff, emissive: 0x1a7ad8, emissiveIntensity: 0.9, roughness: 0.15, noShadow: true }).clone();
@@ -234,15 +113,18 @@ export function purifierModel(): MachineModel {
   root.add(fan, mesh(new TorusGeometry(0.22, 0.03, 6, 16), LOOK.steel(), 0.85, 0.65, 0.61));
 
   const belt = beltMaterial();
-  const inputTray = intake(root, belt);
-  const outputTray = outlet(root);
+  const input = intake(root, belt);
+  const output = outlet(root);
   const screen = consolePanel(root, -0.1, 0.65, 0x4de3ff);
   const steam = emitter(root, 0.75, 2.2, -0.45, 0xe8f6ff, 6, 1.4);
 
   return {
     root,
-    inputTray,
-    outputTray,
+    inputTray: input.tray,
+    inputPath: input.path,
+    outputTray: output.tray,
+    outputPath: output.path,
+    rig,
     update(time, dt, working, progress) {
       waterColumns.forEach((column, i) => {
         const max = column.userData.maxHeight as number;

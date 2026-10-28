@@ -1,12 +1,20 @@
 import { CatmullRomCurve3, CylinderGeometry, Group, Mesh, SphereGeometry, TubeGeometry, Vector3, type MeshStandardMaterial } from "three";
 import type { DecorDef, DecorKind, PlanetDef, Point } from "../planets/types";
 import { LOOK, box, glow, mesh, surface } from "./materials";
+import { bakeStatic } from "./bake";
 import { heightAt } from "./terrain";
 import { panelTexture } from "./textures";
+
+/** One separately placed prop, so the intro can drop it in on its own. */
+export interface DecorPiece {
+  readonly root: Group;
+  readonly kind: DecorKind | "cable" | "beacon";
+}
 
 /** Base-camp set dressing: solar farm, antenna, cables, path beacons, crates and fuel tanks. */
 export interface DecorView {
   root: Group;
+  pieces: DecorPiece[];
   update(time: number): void;
 }
 
@@ -57,7 +65,16 @@ function flag(): Group {
   return group;
 }
 
-function cable(planet: PlanetDef, from: Point, to: Point): Mesh {
+/** Weatherproof connector box where a cable meets a building. */
+function junction(): Group {
+  const group = new Group();
+  group.add(box(0.32, 0.26, 0.22, LOOK.dark(), 0, 0.13, 0, 0.04));
+  group.add(box(0.08, 0.05, 0.02, glow(0x5df2a0, 2.4), 0.06, 0.2, 0.115, 0.01));
+  return group;
+}
+
+function cable(planet: PlanetDef, from: Point, to: Point): Group {
+  const group = new Group();
   const points: Vector3[] = [];
   const steps = 12;
   for (let i = 0; i <= steps; i += 1) {
@@ -66,13 +83,20 @@ function cable(planet: PlanetDef, from: Point, to: Point): Mesh {
     const z = from.z + (to.z - from.z) * t;
     points.push(new Vector3(x, heightAt(planet, x, z) + 0.04, z));
   }
-  return new Mesh(new TubeGeometry(new CatmullRomCurve3(points), 48, 0.04, 6), LOOK.rubber());
+  group.add(new Mesh(new TubeGeometry(new CatmullRomCurve3(points), 48, 0.04, 6), LOOK.rubber()));
+  for (const end of [from, to]) {
+    const connector = junction();
+    connector.position.set(end.x, heightAt(planet, end.x, end.z), end.z);
+    connector.rotation.y = Math.atan2(to.x - from.x, to.z - from.z);
+    group.add(connector);
+  }
+  return group;
 }
 
-function place(root: Group, planet: PlanetDef, object: Group | Mesh, x: number, z: number, rotation = 0): void {
+function place(planet: PlanetDef, object: Group, x: number, z: number, rotation = 0): Group {
   object.position.set(x, heightAt(planet, x, z), z);
   object.rotation.y = rotation;
-  root.add(object);
+  return object;
 }
 
 const BUILDERS: Record<Exclude<DecorKind, "solarFarm">, () => Group> = {
@@ -82,21 +106,28 @@ const BUILDERS: Record<Exclude<DecorKind, "solarFarm">, () => Group> = {
   fuelTanks,
 };
 
-function placeDecor(root: Group, planet: PlanetDef, decor: DecorDef): void {
-  if (decor.kind !== "solarFarm") {
-    place(root, planet, BUILDERS[decor.kind](), decor.x, decor.z, decor.rotation);
-    return;
-  }
+function decorPiece(planet: PlanetDef, decor: DecorDef): Group {
+  if (decor.kind !== "solarFarm") return place(planet, BUILDERS[decor.kind](), decor.x, decor.z, decor.rotation);
+  // The farm is one piece placed at its first panel; panels sit on the local ground height.
+  const farm = place(planet, new Group(), decor.x, decor.z);
   for (let row = 0; row < 2; row += 1) {
-    for (let col = 0; col < 3; col += 1) place(root, planet, solarPanel(), decor.x + col * 1.8, decor.z - row * 1.6);
+    for (let col = 0; col < 3; col += 1) {
+      const x = decor.x + col * 1.8;
+      const z = decor.z - row * 1.6;
+      const panel = solarPanel();
+      panel.position.set(x - decor.x, heightAt(planet, x, z) - farm.position.y, z - decor.z);
+      farm.add(panel);
+    }
   }
+  return farm;
 }
 
 export function buildDecor(planet: PlanetDef): DecorView {
   const root = new Group();
+  const pieces: DecorPiece[] = [];
   const { scenery } = planet;
-  for (const decor of scenery.decor) placeDecor(root, planet, decor);
-  for (const [from, to] of scenery.cables) root.add(cable(planet, from, to));
+  for (const decor of scenery.decor) pieces.push({ root: decorPiece(planet, decor), kind: decor.kind });
+  for (const [from, to] of scenery.cables) pieces.push({ root: cable(planet, from, to), kind: "cable" });
 
   // Blinking beacons line the way through the ridge.
   const beaconMaterial = glow(0x4de3ff, 2.5).clone() as MeshStandardMaterial;
@@ -105,11 +136,16 @@ export function buildDecor(planet: PlanetDef): DecorView {
       const post = new Group();
       post.add(mesh(new CylinderGeometry(0.05, 0.07, 0.6, 8), LOOK.dark(), 0, 0.3, 0));
       post.add(mesh(new SphereGeometry(0.08, 10, 8), beaconMaterial, 0, 0.65, 0));
-      place(root, planet, post, x, z);
+      pieces.push({ root: place(planet, post, x, z), kind: "beacon" });
     }
+  }
+  for (const piece of pieces) {
+    bakeStatic(piece.root);
+    root.add(piece.root);
   }
   return {
     root,
+    pieces,
     update(time) {
       beaconMaterial.emissiveIntensity = 0.6 + Math.max(0, Math.sin(time * 3)) * 3;
     },

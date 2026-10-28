@@ -1,6 +1,6 @@
 {
   "name": "starhop",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Starhop: a 3D planet-hopping mining and building game for the browser (Three.js + TypeScript), built for CrazyGames.",
   "scripts": {
     "dev": "node build.mjs --watch",

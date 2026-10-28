@@ -3,7 +3,7 @@ import type { PlanetDef } from "./types";
 /**
  * Mars. The base mirrors the Moon's: copper lies west of the dome and Zix trades to the east.
  * A rockslide blocks the canyon to the north, where dry ice, the fuel synthesizer, the engine
- * works and the rocket wait. Dust storms replace the Moon's meteors.
+ * works and the rocket wait. Dust storms are the planet's hazard.
  */
 export const MARS: PlanetDef = {
   id: "mars",
@@ -26,7 +26,7 @@ export const MARS: PlanetDef = {
   spawn: { x: 0, z: 3 },
   sellPad: { x: 5.4, z: 1.2 },
   trader: { x: 5.4, z: -0.9 },
-  workshop: { x: 6, z: -4.5 },
+  workshop: { x: 5.5, z: 6.2 },
   rocket: { x: 0, z: -29.5, pad: { x: 0, z: -25.7 }, parts: { engine: 8, wire: 14 } },
   deposits: [
     { id: "copper-1", item: "copperOre", x: -8.6, z: 3.8, zone: null },
@@ -83,9 +83,10 @@ export const MARS: PlanetDef = {
   ],
   unlocks: [
     { id: "wireMill", label: "Wire mill", kind: "machine", cost: 60, requires: [], machineId: "wireMill", x: -6, z: -4.5 },
-    { id: "workshop", label: "Workshop", kind: "workshop", cost: 120, requires: ["wireMill"], x: 6, z: -4.5 },
+    { id: "workshop", label: "Workshop", kind: "workshop", cost: 120, requires: ["wireMill"], x: 5.5, z: 6.2 },
     { id: "canyon", label: "Clear the rockslide", kind: "path", cost: 260, requires: ["wireMill"], x: 0, z: -8.4 },
     { id: "robot-wire", label: "Copper robot", kind: "robot", cost: 220, requires: ["workshop"], machineId: "wireMill", x: -10, z: -5.8 },
+    { id: "drone-wire", label: "Trader drone", kind: "drone", cost: 250, requires: ["robot-wire"], machineId: "wireMill", x: 7.6, z: -3.4 },
     { id: "fuelSynth", label: "Fuel synthesizer", kind: "machine", cost: 300, requires: ["canyon"], machineId: "fuelSynth", x: 7, z: -15.5 },
     { id: "robot-fuel", label: "Dry ice robot", kind: "robot", cost: 420, requires: ["fuelSynth"], machineId: "fuelSynth", x: 11.2, z: -16.6 },
     { id: "engineWorks", label: "Engine works", kind: "machine", cost: 400, requires: ["fuelSynth"], machineId: "engineWorks", x: -7, z: -18 },
@@ -95,7 +96,7 @@ export const MARS: PlanetDef = {
     { text: "Stand on the pad to build the wire mill", target: { x: -6, z: -4.5 }, check: { kind: "unlocked", id: "wireMill" } },
     { text: "Feed copper ore into the wire mill", target: { x: -7.9, z: -2.6 }, check: { kind: "processed", machineId: "wireMill", count: 3 } },
     { text: "Sell copper wire to Zix", target: { x: 5.4, z: 1.2 }, check: { kind: "earned", credits: 150 } },
-    { text: "Build the workshop", target: { x: 6, z: -4.5 }, check: { kind: "unlocked", id: "workshop" } },
+    { text: "Build the workshop", target: { x: 5.5, z: 6.2 }, check: { kind: "unlocked", id: "workshop" } },
     { text: "Clear the rockslide in the canyon", target: { x: 0, z: -8.4 }, check: { kind: "unlocked", id: "canyon" } },
     { text: "Hire the copper robot to feed the wire mill", target: { x: -10, z: -5.8 }, check: { kind: "unlocked", id: "robot-wire" } },
     { text: "Build the fuel synthesizer", target: { x: 7, z: -15.5 }, check: { kind: "unlocked", id: "fuelSynth" } },
@@ -104,11 +105,10 @@ export const MARS: PlanetDef = {
     { text: "Load the rocket: 8 engines and 14 copper wire", target: { x: 0, z: -25.7 }, check: { kind: "rocketComplete" } },
     { text: "Stand on the launch pad to lift off", target: { x: 0, z: -25.7 }, check: { kind: "launched" } },
   ],
-  meteors: null,
   storms: { after: "wireMill" },
   scenery: {
     craters: [
-      { x: 9.5, z: 6.5, radius: 2.2 },
+      { x: 10.8, z: 8, radius: 1.5 },
       { x: -3.5, z: 7.5, radius: 1.4 },
       { x: 13, z: -8.5, radius: 1.6 },
       { x: -12.5, z: -26, radius: 2.2 },
@@ -120,14 +120,14 @@ export const MARS: PlanetDef = {
       [-17.5, -2, 2.6],
       [17.8, -20, 2.4],
       [-17.6, -29, 2],
-      [6, 10.5, 1.8],
-      [-8, 10.4, 2.1],
+      [12.5, 12.5, 1.8],
+      [-10, 12.8, 2.1],
       [8, -35.5, 2.6],
       [-10, -35, 2],
     ],
     decor: [
       { kind: "solarFarm", x: 10, z: 4.4 },
-      { kind: "antenna", x: 2.8, z: 7.6, rotation: -0.6 },
+      { kind: "antenna", x: 1.6, z: 8.2, rotation: -0.6 },
       { kind: "crates", x: -2.6, z: 6.7, rotation: 0.3 },
       { kind: "flag", x: -4.6, z: 4.2 },
       { kind: "fuelTanks", x: -12.5, z: -28.5, rotation: -0.4 },
@@ -136,12 +136,13 @@ export const MARS: PlanetDef = {
     ],
     cables: [
       [{ x: -2.6, z: 0.4 }, { x: -4.8, z: -3.3 }],
-      [{ x: 3.3, z: 3.9 }, { x: 8.6, z: 3.4 }],
+      [{ x: 3.5, z: 3.6 }, { x: 9.1, z: 3.6 }],
     ],
     beaconRows: [-7.2, -13.6, -16],
     starCount: 350,
   },
   route: { label: "Mars", resources: "Copper · Dry ice", dot: ["#ff9b6a", "#8a3a22"] },
+  music: "mars",
   arrivalCaptions: [
     "Touchdown on Mars. Thin air, red dust and a sky the colour of rust.",
     "Copper lies to the west and dry ice beyond the canyon. Zix followed you here, of course.",

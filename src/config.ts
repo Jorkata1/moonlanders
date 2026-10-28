@@ -46,7 +46,6 @@ export const OXYGEN = {
 
 export const DEPOSIT = {
   amount: 5,
-  regrowSeconds: 14,
   radius: 0.65,
 } as const;
 
@@ -58,6 +57,8 @@ export const MACHINE = {
 
 export const PADS = {
   radius: 1.25,
+  /** The workshop's stand-here pad sits this far in front (south) of the bench. */
+  workshopOffset: 1.5,
   /** Every unlock takes about this long to pay off, however expensive. */
   paySeconds: 1.6,
   minPayPerSecond: 10,
@@ -74,17 +75,19 @@ export const STORM = {
   speedMultiplier: 0.7,
 } as const;
 
-export const METEOR = {
-  firstDelaySeconds: 30,
-  minIntervalSeconds: 16,
-  maxIntervalSeconds: 26,
-  warningSeconds: 2.4,
-  radius: 2.1,
-  aimJitter: 2.5,
-  rewardOre: 4,
-  /** Meteor chunks crumble away if nobody mines them. */
-  chunkLifetimeSeconds: 45,
-  carryLossRatio: 0.5,
+/** Fresh ore drops from the sky into each deposit field; mined-out nodes crumble instead of regrowing. */
+export const ORE_FALL = {
+  minIntervalSeconds: 2,
+  maxIntervalSeconds: 4,
+  /** Seconds from the landing marker appearing to touchdown. */
+  fallSeconds: 1.6,
+  /** A mined-out node lingers as rubble this long before it disappears. */
+  rubbleSeconds: 2.5,
+  /** New nodes keep at least this far from other nodes and from the player. */
+  spacing: 1.6,
+  /** How far beyond the outermost starting node a field reaches. */
+  fieldPadding: 0.8,
+  placementAttempts: 12,
 } as const;
 
 export const ROBOT = {
@@ -102,6 +105,37 @@ export const ROBOT_UPGRADES: Record<RobotUpgradeId, UpgradeDef> = {
   capacity: { name: "Cargo bay", description: "+2 robot carry slots", costs: [100, 200, 360] },
   mining: { name: "Robot drill", description: "Robot mines 25% faster", costs: [110, 220, 380] },
 };
+
+/** Trader drones carry a machine's finished goods to Zix and sell them. */
+export const DRONE = {
+  speed: 3.4,
+  capacity: 4,
+  loadInterval: 0.25,
+  sellInterval: 0.2,
+  /** Cruising height while flying. */
+  flightHeight: 2.6,
+} as const;
+
+export const DRONE_UPGRADE_IDS = ["speed", "capacity", "haggle"] as const;
+export type DroneUpgradeId = (typeof DRONE_UPGRADE_IDS)[number];
+
+export const DRONE_UPGRADES: Record<DroneUpgradeId, UpgradeDef> = {
+  speed: { name: "Thrusters", description: "+25% flight speed", costs: [90, 180, 320] },
+  capacity: { name: "Cargo hold", description: "+2 items per trip", costs: [100, 200, 360] },
+  haggle: { name: "Haggling chip", description: "+10% sale price", costs: [140, 260, 420] },
+};
+
+export function droneSpeedFor(level: number): number {
+  return DRONE.speed * (1 + 0.25 * level);
+}
+
+export function droneCapacityFor(level: number): number {
+  return DRONE.capacity + 2 * level;
+}
+
+export function dronePriceFactor(level: number): number {
+  return 1 + 0.1 * level;
+}
 
 export function robotSpeedFor(level: number): number {
   return ROBOT.speed * (1 + 0.25 * level);

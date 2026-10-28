@@ -1,13 +1,13 @@
 import { CylinderGeometry, Group, PointLight, SphereGeometry, TorusGeometry, type Mesh } from "three";
 import { ITEMS } from "../config";
-import { base, beltMaterial, consolePanel, emitter, intake, outlet, type MachineModel } from "./machines";
+import { base, beltMaterial, consolePanel, emitter, intake, outlet, type MachineModel } from "./machineParts";
 import { LOOK, box, glow, mesh, surface } from "./materials";
 import { panelTexture } from "./textures";
 
 /** Wire mill: copper ore is drawn through rollers and wound onto a spinning spool. */
 export function wireMillModel(): MachineModel {
   const root = new Group();
-  base(root);
+  const rig = base(root);
   const body = surface({ map: panelTexture("wiremill-panels", "#2f6f63", 4), roughness: 0.5, metalness: 0.35, reflective: true, envMapIntensity: 0.35 });
   root.add(box(1.6, 1.1, 1.4, body, 0.05, 0.8, -0.4, 0.1));
   root.add(box(1.7, 0.12, 1.5, LOOK.dark(), 0.05, 1.4, -0.4, 0.04));
@@ -39,14 +39,17 @@ export function wireMillModel(): MachineModel {
   root.add(mesh(new SphereGeometry(0.12, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), beacon, -0.5, 1.46, 0.1));
 
   const belt = beltMaterial();
-  const inputTray = intake(root, belt);
-  const outputTray = outlet(root);
+  const input = intake(root, belt);
+  const output = outlet(root);
   const screen = consolePanel(root, 1.4, -0.75, 0x3fd1a0);
 
   return {
     root,
-    inputTray,
-    outputTray,
+    inputTray: input.tray,
+    inputPath: input.path,
+    outputTray: output.tray,
+    outputPath: output.path,
+    rig,
     update(time, dt, working) {
       for (const roller of rollers.children) roller.rotation.y += dt * (working ? 8 : 0.2);
       spool.rotation.x += dt * (working ? 5 : 0.1);
@@ -60,7 +63,7 @@ export function wireMillModel(): MachineModel {
 /** Fuel synthesizer: dry ice is cracked in a pressure sphere and bottled into glowing cells. */
 export function fuelSynthModel(): MachineModel {
   const root = new Group();
-  base(root);
+  const rig = base(root);
   root.add(mesh(new CylinderGeometry(0.62, 0.7, 0.3, 20), LOOK.steel(), -0.1, 0.39, -0.45));
   const sphere = surface({ color: 0xe8ecf2, roughness: 0.25, metalness: 0.4, reflective: true, envMapIntensity: 0.8 });
   root.add(mesh(new SphereGeometry(0.7, 24, 16), sphere, -0.1, 1.2, -0.45));
@@ -69,9 +72,9 @@ export function fuelSynthModel(): MachineModel {
   const cellGlow = surface({ color: 0x9cf07a, emissive: ITEMS.fuelCell.color, emissiveIntensity: 0.4, roughness: 0.2, noShadow: true }).clone();
   const cells: Mesh[] = [];
   for (let i = 0; i < 3; i += 1) {
-    const cell = mesh(new CylinderGeometry(0.13, 0.13, 0.6, 14), cellGlow, 0.55 + i * 0.3, 0.6, -0.95);
+    const cell = mesh(new CylinderGeometry(0.13, 0.13, 0.6, 14), cellGlow, 0.3 + i * 0.28, 0.6, -0.95);
     cells.push(cell);
-    root.add(cell, mesh(new CylinderGeometry(0.09, 0.1, 0.06, 10), LOOK.dark(), 0.55 + i * 0.3, 0.93, -0.95));
+    root.add(cell, mesh(new CylinderGeometry(0.09, 0.1, 0.06, 10), LOOK.dark(), 0.3 + i * 0.28, 0.93, -0.95));
   }
   root.add(mesh(new CylinderGeometry(0.06, 0.06, 1.2, 8), LOOK.steel(), 0.5, 1.5, -0.45).rotateZ(Math.PI / 2));
 
@@ -86,15 +89,18 @@ export function fuelSynthModel(): MachineModel {
   root.add(light);
 
   const belt = beltMaterial();
-  const inputTray = intake(root, belt);
-  const outputTray = outlet(root);
+  const input = intake(root, belt);
+  const output = outlet(root);
   const screen = consolePanel(root, 1.4, 0.0, 0x8cf06a);
   const vapour = emitter(root, -0.1, 1.95, -0.45, 0xf2f4ff, 7, 1.6);
 
   return {
     root,
-    inputTray,
-    outputTray,
+    inputTray: input.tray,
+    inputPath: input.path,
+    outputTray: output.tray,
+    outputPath: output.path,
+    rig,
     update(time, dt, working, progress) {
       cellGlow.emissiveIntensity = working ? 1 + progress * 2 + Math.sin(time * 9) * 0.3 : 0.4;
       cells.forEach((cell, i) => cell.scale.set(1, working ? 0.92 + Math.sin(time * 6 + i) * 0.08 : 1, 1));
@@ -110,7 +116,7 @@ export function fuelSynthModel(): MachineModel {
 /** Engine works: wire and fuel cells feed an assembly bay where an engine fires on a test stand. */
 export function engineWorksModel(): MachineModel {
   const root = new Group();
-  base(root);
+  const rig = base(root);
   const hull = surface({ map: panelTexture("engineworks-panels", "#5a5f6e", 5), roughness: 0.45, metalness: 0.45, reflective: true, envMapIntensity: 0.4 });
   root.add(box(1.5, 1.7, 1.3, hull, 0.15, 1.05, -0.15, 0.12));
   root.add(box(1.6, 0.14, 1.4, LOOK.orange(), 0.15, 1.95, -0.15, 0.04));
@@ -137,17 +143,21 @@ export function engineWorksModel(): MachineModel {
   root.add(glowLight);
 
   const belt = beltMaterial();
-  const inputTray = intake(root, belt, 1);
-  const secondTray = intake(root, belt, -1);
-  const outputTray = outlet(root);
+  const input = intake(root, belt, 1);
+  const second = intake(root, belt, -1);
+  const output = outlet(root);
   const screen = consolePanel(root, 1.4, -0.9, 0xff8a4a);
   const exhaust = emitter(root, 0.15, 2.6, -0.15, 0xffc08a, 6, 1.8);
 
   return {
     root,
-    inputTray,
-    secondTray,
-    outputTray,
+    inputTray: input.tray,
+    inputPath: input.path,
+    secondTray: second.tray,
+    secondPath: second.path,
+    outputTray: output.tray,
+    outputPath: output.path,
+    rig,
     update(time, dt, working, progress) {
       const flicker = Math.sin(time * 17) * 0.3 + Math.sin(time * 41) * 0.2;
       flame.emissiveIntensity = working ? 1.5 + progress * 2.5 + flicker : 0.2;

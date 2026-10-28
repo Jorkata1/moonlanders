@@ -1,0 +1,41 @@
+.screen { position: fixed; inset: 0; display: grid; place-items: center; padding: var(--top) var(--gutter-right) var(--bottom) var(--gutter-left); background: radial-gradient(ellipse at 50% 30%, rgba(30, 40, 90, 0.35), rgba(5, 7, 16, 0.75)); overflow-y: auto; z-index: 5; }
+.card { width: min(100%, 440px); padding: 32px 24px 24px; border-radius: 24px; background: rgba(14, 18, 36, 0.92); border: 1px solid var(--line); box-shadow: 0 32px 64px rgba(0, 0, 0, 0.5); display: flex; flex-direction: column; gap: 16px; animation: card-in 300ms ease-out; }
+.card h1, .card h2 { margin: 0; font-family: var(--font-display); font-weight: 700; line-height: 1.1; text-wrap: balance; }
+.card h1 { font-size: 48px; letter-spacing: 0.08em; background: linear-gradient(180deg, #ffffff, #9fdcff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.card h2 { font-size: 30px; }
+.card p { margin: 0; color: var(--muted); }
+.eyebrow { font-family: var(--font-display); font-weight: 700; font-size: 14px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--cyan); }
+.planet-row { display: flex; gap: 8px; }
+.planet { flex: 1; padding: 8px; border-radius: 12px; border: 1px solid var(--line); text-align: center; font-size: 13px; color: var(--muted); }
+.planet strong { display: block; font-family: var(--font-display); font-size: 15px; color: var(--text); }
+.planet.is-current { border-color: var(--cyan); background: rgba(77, 227, 255, 0.08); }
+.planet.is-done { border-color: rgba(93, 242, 160, 0.5); }
+.planet.is-done .planet-status { color: #5df2a0; }
+.planet-dot { width: 28px; height: 28px; margin: 0 auto 4px; border-radius: 50%; }
+.primary { min-height: 52px; border: 0; border-radius: 14px; background: linear-gradient(180deg, #6ff0ff, #2fb7c9); color: #04202a; font-family: var(--font-display); font-weight: 700; font-size: 20px; letter-spacing: 0.06em; cursor: pointer; transition: transform 150ms ease-out, filter 150ms ease-out; }
+.primary:hover { filter: brightness(1.08); }
+.primary:active { transform: scale(0.97); }
+.secondary { min-height: 44px; border: 1px solid var(--line); border-radius: 12px; background: transparent; color: var(--muted); font: inherit; font-weight: 700; cursor: pointer; transition: background-color 150ms ease-out, color 150ms ease-out; }
+.secondary:hover { background: rgba(255, 255, 255, 0.06); color: var(--text); }
+.secondary[data-armed="true"] { color: var(--red); border-color: rgba(255, 107, 90, 0.5); }
+.hint { font-size: 14px; }
+.settings { display: grid; gap: 8px; }
+.switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 12px 0 16px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255, 255, 255, 0.04); color: var(--text); font: inherit; font-weight: 700; cursor: pointer; transition: background-color 150ms ease-out, border-color 150ms ease-out; }
+.switch:hover { background: rgba(255, 255, 255, 0.08); }
+.switch-track { position: relative; width: 44px; height: 24px; border-radius: 999px; background: rgba(255, 255, 255, 0.16); transition: background-color 200ms ease-in-out; }
+.switch-thumb { position: absolute; left: 3px; top: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--text); transition: transform 200ms ease-in-out; }
+.switch[aria-checked="true"] .switch-track { background: var(--mint); }
+.switch[aria-checked="true"] .switch-thumb { transform: translateX(20px); background: #062a18; }
+:is(.primary, .secondary, .icon-button, .upgrade, .panel-toggle, .switch, #turbo):focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+
+@keyframes bump { 0% { transform: scale(1); } 40% { transform: scale(1.18); } 100% { transform: scale(1); } }
+@keyframes pulse-border { 50% { box-shadow: 0 0 0 3px rgba(255, 107, 90, 0.35); } }
+@keyframes mission-in { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes panel-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes card-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes coach-in { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes bar-top { from { transform: translateY(-100%); } to { transform: none; } }
+@keyframes bar-bottom { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes caption-in { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes flash { 0% { opacity: 1; } 100% { opacity: 0; } }

@@ -1,8 +1,10 @@
 import { PADS } from "../config";
 import type { ObjectiveCheck } from "../planets/types";
-import { updateDeposits, updateMachines, updatePayPads, updatePlayerMining, updateTransfers } from "./economy";
+import { updateMachines, updatePayPads, updatePlayerMining, updateTransfers } from "./economy";
+import { updateDrones } from "./drones";
+import { updateOreFields } from "./orefall";
 import type { Emit, SimEvent } from "./events";
-import { updateMeteors, updateOxygen, updateStorm, type Random } from "./hazards";
+import { updateOxygen, updateStorm, type Random } from "./hazards";
 import { movePlayer, type MoveInput } from "./movement";
 import { updatePiles } from "./inventory";
 import { updateRobots } from "./robots";
@@ -53,7 +55,7 @@ function stepOnce(state: GameState, input: MoveInput, dt: number, emit: Emit, ra
   state.boostSeconds = Math.max(0, state.boostSeconds - dt);
   state.player.stunned = Math.max(0, state.player.stunned - dt);
   movePlayer(state, input, dt);
-  updateDeposits(state, dt);
+  updateOreFields(state, dt, emit, random);
   updatePlayerMining(state, dt, emit);
   updateTransfers(state, dt, emit);
   updatePiles(state, dt, emit);
@@ -61,7 +63,7 @@ function stepOnce(state: GameState, input: MoveInput, dt: number, emit: Emit, ra
   updateMachines(state, dt);
   updateRobots(state, dt, emit);
   updateOxygen(state, dt, emit);
-  updateMeteors(state, dt, emit, random);
+  updateDrones(state, dt, emit);
   updateStorm(state, dt, emit, random);
   updateLaunch(state, emit);
   updateObjectives(state, emit);

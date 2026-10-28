@@ -1,4 +1,4 @@
-import { ITEM_IDS, MACHINE, ROBOT_UPGRADES, ROBOT_UPGRADE_IDS, UPGRADES, UPGRADE_IDS, oxygenFor, type ItemId, type RobotUpgradeId, type UpgradeId } from "../config";
+import { DRONE_UPGRADES, DRONE_UPGRADE_IDS, ITEM_IDS, MACHINE, ROBOT_UPGRADES, ROBOT_UPGRADE_IDS, UPGRADES, UPGRADE_IDS, oxygenFor, type DroneUpgradeId, type ItemId, type RobotUpgradeId, type UpgradeId } from "../config";
 import { PLANETS, planetById } from "../planets";
 import type { PlanetDef } from "../planets/types";
 import { createState, type GameState } from "./state";
@@ -14,6 +14,9 @@ export interface SaveData {
   paid: Record<string, number>;
   upgrades: Record<UpgradeId, number>;
   robotUpgrades: Record<string, Record<RobotUpgradeId, number>>;
+  /** Added in 1.3; older saves simply have no drones. */
+  droneUpgrades?: Record<string, Record<DroneUpgradeId, number>>;
+  droneEnabled?: Record<string, boolean>;
   rocket: Record<ItemId, number>;
   machines: Record<string, { input: number; secondInput: number; output: number; processed: number }>;
   mined: Record<ItemId, number>;
@@ -31,6 +34,8 @@ export function toSave(state: GameState): SaveData {
     paid: Object.fromEntries(state.paid),
     upgrades: { ...state.upgrades },
     robotUpgrades: JSON.parse(JSON.stringify(state.robotUpgrades)) as Record<string, Record<RobotUpgradeId, number>>,
+    droneUpgrades: JSON.parse(JSON.stringify(state.droneUpgrades)) as Record<string, Record<DroneUpgradeId, number>>,
+    droneEnabled: { ...state.droneEnabled },
     rocket: { ...state.rocket },
     machines: Object.fromEntries([...state.machines.values()].map((m) => [m.id, { input: m.input, secondInput: m.secondInput, output: m.output, processed: m.processed }])),
     mined: { ...state.stats.mined },
@@ -67,6 +72,13 @@ export function fromSave(planet: PlanetDef, raw: unknown): GameState {
   for (const [robotId, levels] of Object.entries(state.robotUpgrades)) {
     const saved = record(robotUpgrades[robotId]);
     for (const id of ROBOT_UPGRADE_IDS) levels[id] = count(saved[id], ROBOT_UPGRADES[id].costs.length);
+  }
+  const droneUpgrades = record(data.droneUpgrades);
+  const droneEnabled = record(data.droneEnabled);
+  for (const [droneId, levels] of Object.entries(state.droneUpgrades)) {
+    const saved = record(droneUpgrades[droneId]);
+    for (const id of DRONE_UPGRADE_IDS) levels[id] = count(saved[id], DRONE_UPGRADES[id].costs.length);
+    if (typeof droneEnabled[droneId] === "boolean") state.droneEnabled[droneId] = droneEnabled[droneId] as boolean;
   }
   const rocket = record(data.rocket);
   const mined = record(data.mined);

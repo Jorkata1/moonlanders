@@ -101,7 +101,8 @@ export function createTutorial(touch: boolean, startStep: number): Tutorial {
 
 /** One-off hints the first time something new happens. */
 export const TIPS = {
-  meteor: { step: "Watch out", title: "Meteor incoming!", text: "A red circle shows where it will hit. Step out of it. It leaves a chunk of iron you can mine.", button: "Got it" },
+  orefall: { step: "Fresh ore", title: "Ore from the sky", text: "Mined-out rocks crumble away. New ones fall into the field every few seconds, so the field never runs dry.", button: "Got it" },
+  drone: { step: "Trader drone", title: "Your drone sells for you", text: "It flies finished goods from its machine to Zix. Stand on its dock to pause it when you need the goods for the rocket.", button: "Got it" },
   workshop: { step: "Workshop", title: "Upgrade yourself", text: "Faster boots, a bigger backpack, a stronger drill and more air. Pick from the list.", button: "Got it" },
   storm: { step: "Watch out", title: "Dust storm coming!", text: "Storms slow you down and burn your air twice as fast outside the dome. Wait it out inside, or keep working if your tank is full.", button: "Got it" },
   robot: { step: "Robots", title: "Your robot is working", text: "It mines and feeds its machine on its own. Stand on its dock to upgrade speed, cargo and drill.", button: "Got it" },

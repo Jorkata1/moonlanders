@@ -1,4 +1,4 @@
-import { DEPOSIT, ITEM_IDS, STORM, ROBOT_UPGRADE_IDS, UPGRADE_IDS, oxygenFor, type ItemId, type RobotUpgradeId, type UpgradeId } from "../config";
+import { DEPOSIT, DRONE_UPGRADE_IDS, ITEM_IDS, STORM, ROBOT_UPGRADE_IDS, UPGRADE_IDS, oxygenFor, type DroneUpgradeId, type ItemId, type RobotUpgradeId, type UpgradeId } from "../config";
 import type { PlanetDef, Point } from "../planets/types";
 
 export interface PlayerState {
@@ -10,7 +10,7 @@ export interface PlayerState {
   oxygen: number;
   mineTimer: number;
   transferTimer: number;
-  /** Seconds left lying on the ground after a meteor hit or running out of air. */
+  /** Seconds left lying on the ground after running out of air. */
   stunned: number;
   miningTarget: string | null;
 }
@@ -19,12 +19,12 @@ export interface DepositState extends Point {
   readonly id: string;
   readonly item: ItemId;
   readonly zone: string | null;
+  /** The ore field this node belongs to; new nodes fall into the same field. */
+  readonly field: string;
   amount: number;
   readonly maxAmount: number;
-  regrowTimer: number;
-  /** Meteor chunks vanish when emptied or when their lifetime runs out, instead of regrowing. */
-  readonly temporary: boolean;
-  lifetime: number;
+  /** Seconds the mined-out rubble stays before the node disappears. */
+  rubble: number;
 }
 
 export interface MachineState {
@@ -60,11 +60,30 @@ export interface PileState extends Point {
   pickupTimer?: number;
 }
 
-export interface MeteorState {
+/** A chunk of ore on its way down from the sky. */
+export interface FallState extends Point {
   readonly id: number;
-  readonly x: number;
-  readonly z: number;
-  warning: number;
+  readonly item: ItemId;
+  readonly field: string;
+  readonly zone: string | null;
+  /** Seconds until touchdown. */
+  timer: number;
+}
+
+export type DronePhase = "toMachine" | "loading" | "toTrader" | "selling" | "returning" | "parked";
+
+/** A trader drone that ferries a machine's output to the sell pad. */
+export interface DroneState {
+  readonly id: string;
+  readonly machineId: string;
+  x: number;
+  z: number;
+  heading: number;
+  carry: number;
+  phase: DronePhase;
+  timer: number;
+  /** Fraction of a credit left over from haggled sales. */
+  cashRemainder: number;
 }
 
 export type StormPhase = "calm" | "warning" | "raging";
@@ -95,9 +114,14 @@ export interface GameState {
   piles: PileState[];
   nextPileId: number;
   rocket: Record<ItemId, number>;
-  meteors: MeteorState[];
-  meteorTimer: number;
-  nextMeteorId: number;
+  falls: FallState[];
+  /** Seconds until each ore field may drop its next node. */
+  fallTimers: Record<string, number>;
+  nextFallId: number;
+  drones: DroneState[];
+  droneUpgrades: Record<string, Record<DroneUpgradeId, number>>;
+  /** Whether each trader drone is allowed to sell. */
+  droneEnabled: Record<string, boolean>;
   storm: StormState;
   stats: Stats;
   objectiveIndex: number;
@@ -120,6 +144,15 @@ export function zeroRobotUpgrades(): Record<RobotUpgradeId, number> {
   return Object.fromEntries(ROBOT_UPGRADE_IDS.map((id) => [id, 0])) as Record<RobotUpgradeId, number>;
 }
 
+export function zeroDroneUpgrades(): Record<DroneUpgradeId, number> {
+  return Object.fromEntries(DRONE_UPGRADE_IDS.map((id) => [id, 0])) as Record<DroneUpgradeId, number>;
+}
+
+/** Deposits of the same item behind the same unlock form one field. */
+export function fieldKey(item: ItemId, zone: string | null): string {
+  return `${item}@${zone ?? "open"}`;
+}
+
 export function createState(planet: PlanetDef): GameState {
   return {
     planet,
@@ -128,16 +161,19 @@ export function createState(planet: PlanetDef): GameState {
     paid: new Map(),
     upgrades: zeroUpgrades(),
     player: { x: planet.spawn.x, z: planet.spawn.z, heading: Math.PI, moving: false, carry: [], oxygen: oxygenFor(0), mineTimer: 0, transferTimer: 0, stunned: 0, miningTarget: null },
-    deposits: planet.deposits.map((d) => ({ ...d, amount: DEPOSIT.amount, maxAmount: DEPOSIT.amount, regrowTimer: 0, temporary: false, lifetime: Infinity })),
+    deposits: planet.deposits.map((d) => ({ ...d, field: fieldKey(d.item, d.zone), amount: DEPOSIT.amount, maxAmount: DEPOSIT.amount, rubble: 0 })),
     machines: new Map(planet.machines.map((m) => [m.id, { id: m.id, input: 0, secondInput: 0, output: 0, progress: null, processed: 0 }])),
     robots: [],
     robotUpgrades: Object.fromEntries(planet.unlocks.filter((u) => u.kind === "robot").map((u) => [u.id, zeroRobotUpgrades()])),
     piles: [],
     nextPileId: 1,
     rocket: zeroItems(),
-    meteors: [],
-    meteorTimer: 0,
-    nextMeteorId: 1,
+    falls: [],
+    fallTimers: {},
+    nextFallId: 1,
+    drones: [],
+    droneUpgrades: Object.fromEntries(planet.unlocks.filter((u) => u.kind === "drone").map((u) => [u.id, zeroDroneUpgrades()])),
+    droneEnabled: Object.fromEntries(planet.unlocks.filter((u) => u.kind === "drone").map((u) => [u.id, true])),
     storm: { phase: "calm", timer: STORM.firstDelaySeconds },
     stats: { mined: zeroItems(), earned: 0 },
     objectiveIndex: 0,

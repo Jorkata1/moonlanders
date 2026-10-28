@@ -1,0 +1,49 @@
+#workshop { position: absolute; left: var(--gutter-left); bottom: var(--bottom); width: min(340px, calc(100% - 32px)); padding: 12px; pointer-events: auto; animation: panel-in 250ms ease-out; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.panel-toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(93, 242, 160, 0.5); background: rgba(93, 242, 160, 0.12); color: var(--mint); font: 700 13px var(--font-display); letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; transition: background-color 150ms ease-out, border-color 150ms ease-out, transform 150ms ease-out; }
+.panel-toggle:hover { background: rgba(93, 242, 160, 0.2); }
+.panel-toggle:active { transform: scale(0.96); }
+.panel-toggle[aria-pressed="false"] { border-color: rgba(255, 107, 90, 0.5); background: rgba(255, 107, 90, 0.12); color: var(--red); }
+.toggle-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; }
+#workshop h2 { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 18px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--cyan); }
+#upgrade-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.upgrade { width: 100%; display: grid; grid-template-columns: auto 1fr auto; gap: 0 12px; padding: 8px 12px; text-align: left; border-radius: 12px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.04); color: var(--text); font: inherit; cursor: pointer; transition: border-color 150ms ease-out, background-color 150ms ease-out, transform 150ms ease-out, opacity 150ms ease-out; }
+.upgrade:hover:not(:disabled) { border-color: var(--cyan); background: rgba(77, 227, 255, 0.08); }
+.upgrade:active:not(:disabled) { transform: scale(0.98); }
+.upgrade:disabled { opacity: 0.55; cursor: not-allowed; }
+.upgrade-icon { grid-column: 1; grid-row: 1 / span 3; align-self: center; width: 24px; height: 24px; fill: none; stroke: var(--cyan); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.upgrade-name { grid-column: 2; font-weight: 700; }
+.upgrade-desc { grid-column: 2; font-size: 13px; color: var(--muted); }
+.upgrade-pips { grid-column: 2; font-size: 12px; letter-spacing: 0.2em; color: var(--cyan); }
+.upgrade-cost { grid-column: 3; grid-row: 1 / span 3; align-self: center; font-family: var(--font-display); font-weight: 700; font-size: 18px; color: var(--gold); font-variant-numeric: tabular-nums; }
+
+.coach { position: absolute; left: 50%; bottom: calc(var(--bottom) + 8px); transform: translateX(-50%); width: min(440px, calc(100% - 2 * 200px)); min-width: 260px; padding: 12px 16px; pointer-events: auto; border-color: rgba(93, 242, 160, 0.45); box-shadow: 0 0 32px rgba(93, 242, 160, 0.12); }
+.coach.is-new { animation: coach-in 300ms ease-out; }
+/* Keep tips clear of an open upgrade panel. */
+#hud:has(#workshop:not([hidden])) .coach { left: calc(var(--gutter-left) + 356px); right: var(--gutter-right); width: auto; min-width: 0; max-width: 440px; transform: none; animation: none; }
+@media (max-width: 900px) { #hud:has(#workshop:not([hidden])) .coach { display: none; } }
+.coach-step { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--mint); }
+.coach h2 { margin: 2px 0 4px; font-family: var(--font-display); font-weight: 700; font-size: 18px; line-height: 1.2; }
+.coach p { margin: 0; font-size: 14px; color: var(--muted); }
+.coach-keys { display: flex; gap: 6px; margin-top: 8px; }
+.coach-keys kbd { min-width: 28px; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--line); border-bottom-width: 3px; background: rgba(255, 255, 255, 0.06); font-family: var(--font-display); font-weight: 700; font-size: 13px; text-align: center; color: var(--text); }
+.coach-ok { margin-top: 8px; min-height: 36px; padding: 0 16px; border: 0; border-radius: 10px; background: var(--mint); color: #062a18; font-family: var(--font-display); font-weight: 700; cursor: pointer; transition: filter 150ms ease-out, transform 150ms ease-out; }
+.coach-ok:hover { filter: brightness(1.08); }
+.coach-ok:active { transform: scale(0.96); }
+.coach-ok:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+
+#intro { position: fixed; inset: 0; z-index: 4; pointer-events: none; }
+.letterbox { position: absolute; left: 0; right: 0; height: 11vh; background: #000; }
+.letterbox--top { top: 0; animation: bar-top 600ms ease-out; }
+.letterbox--bottom { bottom: 0; animation: bar-bottom 600ms ease-out; }
+#intro-caption { position: absolute; left: 50%; bottom: calc(11vh + 24px); transform: translateX(-50%); width: min(640px, calc(100% - 32px)); margin: 0; text-align: center; font-family: var(--font-display); font-weight: 600; font-size: clamp(18px, 2.4vw, 26px); line-height: 1.35; text-wrap: balance; color: #fff; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8); }
+#intro-caption.is-new { animation: caption-in 700ms ease-out; }
+#intro-skip { position: absolute; right: var(--gutter-right); bottom: calc(env(safe-area-inset-bottom, 0px) + 2.5vh); pointer-events: auto; min-height: 40px; padding: 0 16px; background: rgba(14, 18, 36, 0.6); color: var(--text); }
+
+#toast { position: absolute; left: 50%; top: calc(var(--top) + 72px); transform: translateX(-50%); max-width: min(90%, 440px); padding: 8px 16px; text-align: center; font-weight: 700; animation: toast-in 200ms ease-out; }
+#toast[data-tone="good"] { color: var(--mint); }
+#toast[data-tone="bad"] { color: #ffb0a6; border-color: rgba(255, 107, 90, 0.5); }
+#joystick { position: fixed; left: 0; top: 0; width: 112px; height: 112px; border-radius: 50%; border: 2px solid rgba(238, 242, 255, 0.45); background: rgba(14, 18, 36, 0.3); pointer-events: none; z-index: 2; }
+#joystick-knob { position: absolute; left: 32px; top: 32px; width: 48px; height: 48px; border-radius: 50%; background: rgba(238, 242, 255, 0.85); box-shadow: 0 0 16px rgba(77, 227, 255, 0.5); }
+#flash { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(circle, transparent 30%, rgba(255, 60, 40, 0.55)); opacity: 0; }
+#flash.is-on { animation: flash 900ms ease-out; }
