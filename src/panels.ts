@@ -1,58 +1,105 @@
-import { DRONE_UPGRADES, DRONE_UPGRADE_IDS, PADS, ROBOT_UPGRADES, ROBOT_UPGRADE_IDS, UPGRADES, UPGRADE_IDS, type DroneUpgradeId, type RobotUpgradeId, type UpgradeId } from "./config";
-import { buyDroneUpgrade, isDroneEnabled, setDroneEnabled } from "./sim/drones";
-import { buyUpgrade } from "./sim/economy";
+import { ITEM_IDS, MAX_STAGE, PADS, STAGE_BONUS, STAGE_COSTS, SUIT_UPGRADES, SUIT_UPGRADE_IDS, type ItemId, type MaterialCost, type SuitUpgradeId } from "./config";
+import type { BuildDef } from "./planets/types";
 import type { Emit } from "./sim/events";
-import { buyRobotUpgrade } from "./sim/inventory";
-import type { UpgradePanel } from "./hud";
-import { DRONE_ICONS, ROBOT_ICONS, WORKSHOP_ICONS } from "./upgradeIcons";
-import type { Point } from "./planets/types";
-import { distance, type GameState } from "./sim/state";
+import { buildLock, isBuildAvailable, orderLabel, startBuild, startStageUpgrade, startSuitUpgrade, type OrderResult } from "./sim/orders";
+import { isWorkerEnabled, setWorkerEnabled } from "./sim/robots";
+import { distance, workerBuilds, type GameState } from "./sim/state";
+import { SUIT_ICONS, buildIcon, type UpgradeIcon } from "./upgradeIcons";
 
-/** The upgrade panel for wherever the player stands: the workshop, a robot's dock, or nothing. */
-export function activePanel(state: GameState, workshopSpot: Point, robotDock: (id: string) => Point | null): UpgradePanel | null {
-  if (state.unlocked.has("workshop") && distance(state.player, workshopSpot) <= PADS.radius) {
-    return {
-      key: "workshop",
-      title: "Workshop",
-      rows: UPGRADE_IDS.map((id) => ({ id, icon: WORKSHOP_ICONS[id], name: UPGRADES[id].name, description: UPGRADES[id].description, level: state.upgrades[id], max: UPGRADES[id].costs.length, cost: UPGRADES[id].costs[state.upgrades[id]] ?? null })),
-    };
-  }
-  for (const robot of state.robots) {
-    const dock = robotDock(robot.id);
-    const levels = state.robotUpgrades[robot.id];
-    if (!dock || !levels || distance(state.player, dock) > PADS.radius) continue;
-    return {
-      key: robot.id,
-      title: state.planet.unlocks.find((u) => u.id === robot.id)?.label ?? "Robot",
-      rows: ROBOT_UPGRADE_IDS.map((id) => ({ id, icon: ROBOT_ICONS[id], name: ROBOT_UPGRADES[id].name, description: ROBOT_UPGRADES[id].description, level: levels[id], max: ROBOT_UPGRADES[id].costs.length, cost: ROBOT_UPGRADES[id].costs[levels[id]] ?? null })),
-    };
-  }
-  for (const drone of state.drones) {
-    const dock = robotDock(drone.id);
-    const levels = state.droneUpgrades[drone.id];
-    if (!dock || !levels || distance(state.player, dock) > PADS.radius) continue;
-    return {
-      key: drone.id,
-      title: state.planet.unlocks.find((u) => u.id === drone.id)?.label ?? "Trader drone",
-      toggle: { on: isDroneEnabled(state, drone.id), label: isDroneEnabled(state, drone.id) ? "Selling" : "Paused" },
-      rows: DRONE_UPGRADE_IDS.map((id) => ({ id, icon: DRONE_ICONS[id], name: DRONE_UPGRADES[id].name, description: DRONE_UPGRADES[id].description, level: levels[id], max: DRONE_UPGRADES[id].costs.length, cost: DRONE_UPGRADES[id].costs[levels[id]] ?? null })),
-    };
-  }
-  return null;
+export type CardState = "ready" | "active" | "busy" | "locked" | "maxed";
+
+export interface PanelCard {
+  /** What pressing it orders: a build id, a suit upgrade id, or "stage". */
+  id: string;
+  icon: UpgradeIcon;
+  name: string;
+  description: string;
+  /** Upgrade levels, when the card has them. */
+  level?: { current: number; max: number };
+  cost: ReadonlyArray<{ item: ItemId; amount: number }>;
+  state: CardState;
+  /** Why it is locked or busy, or what to do while it is the active order. */
+  note?: string;
 }
 
-/** Flip a drone between selling and paused from its panel. */
+export interface UpgradePanel {
+  /** "workbench", "suit", or the robot/drone id whose dock you stand on. */
+  key: string;
+  title: string;
+  cards: PanelCard[];
+  /** On/off switch in the panel header, for robots and the drone. */
+  toggle?: { on: boolean; label: string };
+}
+
+/** At most this many not-yet-available builds are shown, so players see what comes next. */
+const LOCKED_PREVIEW = 2;
+
+function costList(cost: MaterialCost): PanelCard["cost"] {
+  return ITEM_IDS.filter((item) => (cost[item] ?? 0) > 0).map((item) => ({ item, amount: cost[item] ?? 0 }));
+}
+
+/** Ready, the active order, or waiting for another order to finish. */
+function orderState(state: GameState, kind: "build" | "suit" | "stage", targetId: string): Pick<PanelCard, "state" | "note"> {
+  const order = state.order;
+  if (!order) return { state: "ready" };
+  if (order.kind === kind && order.targetId === targetId) return { state: "active", note: "Bring the materials to the hologram" };
+  return { state: "busy", note: `Finish the ${orderLabel(state, order)} first` };
+}
+
+function buildCard(state: GameState, build: BuildDef): PanelCard {
+  const base = { id: build.id, icon: buildIcon(build.kind, build.machineId), name: build.label, description: build.description, cost: costList(build.cost) };
+  const lock = buildLock(state, build);
+  return lock ? { ...base, state: "locked", note: lock } : { ...base, ...orderState(state, "build", build.id) };
+}
+
+function workbenchPanel(state: GameState): UpgradePanel {
+  const open = state.planet.builds.filter((b) => b.kind !== "workbench" && !state.built.has(b.id));
+  const available = open.filter((b) => isBuildAvailable(state, b));
+  const locked = open.filter((b) => !isBuildAvailable(state, b)).slice(0, LOCKED_PREVIEW);
+  return { key: "workbench", title: "Workbench", cards: [...available, ...locked].map((b) => buildCard(state, b)) };
+}
+
+function suitPanel(state: GameState): UpgradePanel {
+  const cards = SUIT_UPGRADE_IDS.map((id): PanelCard => {
+    const def = SUIT_UPGRADES[id];
+    const level = state.suit[id];
+    const next = def.costs[level];
+    const base = { id, icon: SUIT_ICONS[id], name: def.name, level: { current: level, max: def.costs.length } };
+    if (!next) return { ...base, description: "Fully upgraded", cost: [], state: "maxed" };
+    return { ...base, description: def.effects[level] ?? "", cost: costList(next), ...orderState(state, "suit", id) };
+  });
+  return { key: "suit", title: "Suit station", cards };
+}
+
+function workerPanel(state: GameState, build: BuildDef): UpgradePanel {
+  const stage = state.stages[build.id] ?? 0;
+  const on = isWorkerEnabled(state, build.id);
+  const toggle = { on, label: on ? "Working" : "Off" };
+  const base = { id: "stage", icon: "stage" as const, name: `Stage ${Math.min(stage + 1, MAX_STAGE)}`, level: { current: stage, max: MAX_STAGE } };
+  const next = STAGE_COSTS[stage];
+  const card: PanelCard = next
+    ? { ...base, description: `+${Math.round((STAGE_BONUS[stage + 1] ?? 0) * 100)}% speed, mining and carry`, cost: costList(next), ...orderState(state, "stage", build.id) }
+    : { ...base, description: "Fully upgraded", cost: [], state: "maxed" };
+  return { key: build.id, title: build.label, cards: [card], toggle };
+}
+
+/** The panel for wherever the player stands: the workbench, the suit station, a robot's dock, or nothing. */
+export function activePanel(state: GameState): UpgradePanel | null {
+  const { planet, player } = state;
+  if (state.built.has("workbench") && distance(player, planet.workbench.pad) <= PADS.radius) return workbenchPanel(state);
+  if (distance(player, planet.suitStation.pad) <= PADS.radius) return suitPanel(state);
+  const dock = workerBuilds(planet).find((b) => state.built.has(b.id) && distance(player, b) <= PADS.radius);
+  return dock ? workerPanel(state, dock) : null;
+}
+
+/** Switch a robot or the drone on or off from its panel. */
 export function toggleFromPanel(state: GameState, key: string): void {
-  setDroneEnabled(state, key, !isDroneEnabled(state, key));
+  setWorkerEnabled(state, key, !isWorkerEnabled(state, key));
 }
 
-/** Buy an upgrade from whichever panel the click came from. */
-export function buyFromPanel(state: GameState, key: string, id: string, emit: Emit): { ok: true } | { ok: false; reason: string } {
-  if (key === "workshop") {
-    return (UPGRADE_IDS as readonly string[]).includes(id) ? buyUpgrade(state, id as UpgradeId, emit) : { ok: false, reason: "Unknown upgrade" };
-  }
-  if (key in state.droneUpgrades) {
-    return (DRONE_UPGRADE_IDS as readonly string[]).includes(id) ? buyDroneUpgrade(state, key, id as DroneUpgradeId, emit) : { ok: false, reason: "Unknown upgrade" };
-  }
-  return (ROBOT_UPGRADE_IDS as readonly string[]).includes(id) ? buyRobotUpgrade(state, key, id as RobotUpgradeId, emit) : { ok: false, reason: "Unknown upgrade" };
+/** Place the order a card stands for. */
+export function orderFromPanel(state: GameState, key: string, id: string, emit: Emit): OrderResult {
+  if (key === "workbench") return startBuild(state, id, emit);
+  if (key === "suit") return (SUIT_UPGRADE_IDS as readonly string[]).includes(id) ? startSuitUpgrade(state, id as SuitUpgradeId, emit) : { ok: false, reason: "Unknown upgrade" };
+  return startStageUpgrade(state, key, emit);
 }

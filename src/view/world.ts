@@ -1,42 +1,47 @@
 import { DirectionalLight, Group, HemisphereLight, Vector3, type Object3D, type Scene } from "three";
-import { ITEMS, PADS, type ItemId } from "../config";
-import type { PlanetDef, Point, UnlockKind } from "../planets/types";
-import type { HologramIcon } from "./holograms";
+import { PADS } from "../config";
 import type { DropProp } from "../intro";
-import { isPadAvailable } from "../sim/economy";
-import { distance, isRocketReachable, rocketComplete, type GameState } from "../sim/state";
+import type { PlanetDef, Point } from "../planets/types";
+import { orderProgress, orderSite } from "../sim/orders";
+import { buildDef, distance, isAvailable, rocketReady, stockpileSpot, type GameState } from "../sim/state";
+import { createAssembler } from "./assemble";
 import { bakeStatic } from "./bake";
 import { buildDecor } from "./decor";
 import { depositModel, syncDeposit, type DepositModel } from "./deposits";
+import { drillRigModel } from "./drillRig";
 import type { ItemPool } from "./items";
 import { createMachineViews } from "./machineViews";
 import { createGuide, createPilesView } from "./markers";
-import { merchantModel, type MerchantModel } from "./merchant";
-import { createPad, type PadView } from "./pads";
-import { createStormView, type StormView } from "./storm";
+import { createOrderSite } from "./orderSite";
+import { createPad } from "./pads";
 import { rocketModel, type RocketModel } from "./rocket";
+import { createStormView, type StormView } from "./storm";
 import { domeModel, workshopModel } from "./structures";
+import { suitStationModel, type SuitStationModel } from "./suitStation";
 import { buildTerrain, heightAt } from "./terrain";
+import { createWorkerSites } from "./workerSites";
 
 const SHADOW_EXTENT = 16;
 const SUN_OFFSET = new Vector3(-9, 18, 7);
 const POP_SECONDS = 0.6;
-const UNLOCK_ICONS: Record<UnlockKind, HologramIcon> = { machine: "gear", workshop: "wrench", path: "path", robot: "robot", drone: "drone" };
+/** Objectives that are about finishing an order point the guide at the hologram instead. */
+const ORDER_CHECKS: ReadonlySet<string> = new Set(["built", "builtAny", "suitUpgraded"]);
 
 export interface WorldView {
   sync(state: GameState, dt: number, time: number): void;
-  celebrateUnlock(id: string): void;
   rocket: RocketModel;
-  merchant: MerchantModel;
+  suitStation: SuitStationModel;
   storm: StormView;
   groundAt(point: Point): Vector3;
   /** Animate an item riding a machine's belt in; see MachineViews.feed. */
-  feedMachine(machineId: string, second: boolean, delay: number): void;
+  feedMachine(machineId: string, delay: number): void;
   onMachineIntake(handler: (at: Vector3, color: number) => void): void;
-  /** Everything the intro drops from orbit or grows in place, in their final positions. */
+  /** Everything the intro drops in or unfolds, in their final positions. */
   introProps(): DropProp[];
-  /** Where the player stands to open a robot's upgrade panel. */
-  robotDock(id: string): Point | null;
+  /** Assemble a finished build from the ground up. */
+  assemble(buildId: string): void;
+  /** The drill bit's world position while it bores, for dust and sparks. */
+  drillTip(state: GameState): Vector3 | null;
 }
 
 function place(object: Object3D, planet: PlanetDef, point: Point, lift = 0): void {
@@ -55,22 +60,25 @@ function lights(scene: Scene, planet: PlanetDef, shadowMapSize: number): Directi
   return sun;
 }
 
-export function buildWorld(scene: Scene, state: GameState, pool: ItemPool, shadowMapSize: number): WorldView {
-  const planet = state.planet;
-  const sun = lights(scene, planet, shadowMapSize);
-  const keepClear = [
+function keepClear(planet: PlanetDef): Array<Point & { radius: number }> {
+  return [
     { ...planet.dome, radius: planet.dome.radius + 1 },
-    { ...planet.sellPad, radius: 2 },
-    { ...planet.trader, radius: 2.4 },
-    { ...planet.workshop, radius: 2.4 },
+    { ...planet.suitStation, radius: 2.4 },
+    { ...planet.workbench, radius: 2.4 },
     { x: planet.rocket.x, z: planet.rocket.z, radius: 3.2 },
     { ...planet.rocket.pad, radius: 1.8 },
     ...planet.deposits.map((d) => ({ ...d, radius: 1.4 })),
-    ...planet.machines.flatMap((m) => [{ ...m, radius: 2.6 }, { ...m.inputPad, radius: 1.6 }, { ...m.outputPad, radius: 1.6 }, ...(m.secondInput ? [{ ...m.secondInput.pad, radius: 1.6 }] : [])]),
-    ...planet.unlocks.map((u) => ({ ...u, radius: 1.8 })),
+    ...planet.machines.flatMap((m) => [{ ...m, radius: 2.6 }, { ...m.inputPad, radius: 1.6 }, { ...m.outputPad, radius: 1.6 }]),
+    ...planet.builds.flatMap((b) => [{ ...b, radius: 1.8 }, { ...b.site, radius: 1.6 }, ...(b.kind === "robot" && !b.machineId ? [{ ...stockpileSpot(b), radius: 1.2 }] : [])]),
     { x: 0, z: planet.ridge.z, radius: 4 },
   ];
-  const terrain = buildTerrain(planet, keepClear);
+}
+
+export function buildWorld(scene: Scene, state: GameState, pool: ItemPool, shadowMapSize: number): WorldView {
+  const planet = state.planet;
+  const at = (object: Object3D, point: Point) => place(object, planet, point);
+  const sun = lights(scene, planet, shadowMapSize);
+  const terrain = buildTerrain(planet, keepClear(planet));
   const decor = buildDecor(planet);
   const staticRoot = new Group();
   staticRoot.add(terrain.root, decor.root);
@@ -78,102 +86,95 @@ export function buildWorld(scene: Scene, state: GameState, pool: ItemPool, shado
   scene.add(staticRoot);
 
   const dome = domeModel(planet.dome.radius);
-  place(dome, planet, planet.dome);
+  at(dome, planet.dome);
   bakeStatic(dome);
   scene.add(dome);
 
-  const merchant = merchantModel();
-  place(merchant.root, planet, planet.trader);
-  bakeStatic(merchant.root);
-  const sell = createPad("sell", PADS.radius, 1.2);
-  sell.label.set("SELL HERE", "Zix buys everything", "ready");
-  place(sell.root, planet, planet.sellPad);
-  scene.add(merchant.root, sell.root);
+  const suitStation = suitStationModel();
+  at(suitStation.root, planet.suitStation);
+  const suitPad = createPad("workshop", PADS.radius, 2.0, false, "suit");
+  suitPad.label.set("SUIT STATION", "Stand here to upgrade");
+  at(suitPad.root, planet.suitStation.pad);
+  scene.add(suitStation.root, suitPad.root);
 
-  const workshop = workshopModel();
-  place(workshop, planet, planet.workshop);
-  const workshopSpot = { x: planet.workshop.x, z: planet.workshop.z + PADS.workshopOffset };
-  const workshopPad = createPad("workshop", PADS.radius, 2.2);
-  workshopPad.label.set("WORKSHOP", "Stand here to upgrade");
-  place(workshopPad.root, planet, workshopSpot);
-  scene.add(workshop, workshopPad.root);
+  const workbench = workshopModel();
+  at(workbench, planet.workbench);
+  const workbenchPad = createPad("workshop", PADS.radius, 2.2, false, "build");
+  workbenchPad.label.set("WORKBENCH", "Order builds here");
+  at(workbenchPad.root, planet.workbench.pad);
+  scene.add(workbench, workbenchPad.root);
 
-  const machines = createMachineViews(scene, planet, pool, (object, point) => place(object, planet, point));
+  const drillBuild = planet.builds.find((b) => b.kind === "drill");
+  const drill = drillRigModel();
+  if (drillBuild) {
+    at(drill.root, drillBuild);
+    // Face the middle of the ridge gap it bores through (the model's front is -z).
+    drill.root.rotation.y = Math.atan2(drillBuild.x, drillBuild.z - planet.ridge.z);
+    scene.add(drill.root);
+  }
+
+  const machines = createMachineViews(scene, planet, pool, at);
   const storm = createStormView(scene, planet);
+  const workers = createWorkerSites(scene, planet, pool, at);
 
   const rocket = rocketModel();
-  place(rocket.root, planet, planet.rocket);
-  const rocketPad = createPad("rocket", PADS.radius, 1.9);
-  place(rocketPad.root, planet, planet.rocket.pad);
-  scene.add(rocket.root, rocketPad.root);
+  at(rocket.root, planet.rocket);
+  const launchPad = createPad("rocket", PADS.radius, 1.9);
+  launchPad.label.set("READY TO LAUNCH", "Stand here to lift off", "ready");
+  at(launchPad.root, planet.rocket.pad);
+  scene.add(rocket.root, launchPad.root);
 
-  const payPads = new Map<string, PadView>();
-  const docks = new Map<string, PadView>();
-  for (const unlock of planet.unlocks) {
-    const pad = createPad("pay", PADS.radius, 2.0, true, UNLOCK_ICONS[unlock.kind]);
-    place(pad.root, planet, unlock);
-    scene.add(pad.root);
-    payPads.set(unlock.id, pad);
-    if (unlock.kind !== "robot" && unlock.kind !== "drone") continue;
-    const dock = createPad("workshop", PADS.radius, 1.6, false, UNLOCK_ICONS[unlock.kind]);
-    dock.label.set(unlock.label.toUpperCase(), "Stand here to upgrade");
-    place(dock.root, planet, unlock);
-    scene.add(dock.root);
-    docks.set(unlock.id, dock);
+  /** Models a build hologram can show a ghost of, and that assemble when finished. */
+  function modelOf(buildId: string): Object3D | null {
+    const build = buildDef(planet, buildId);
+    if (!build) return null;
+    if (build.kind === "workbench") return workbench;
+    if (build.kind === "drill") return drill.root;
+    if ((build.kind === "machine" || build.kind === "machineUpgrade") && build.machineId) return machines.modelOf(build.machineId);
+    if (build.kind === "robot" || build.kind === "drone") return workers.dock(build.id)?.root ?? null;
+    return null;
   }
 
+  const orders = createOrderSite(scene, planet, at, modelOf);
+  const assembler = createAssembler();
   const deposits = new Map<string, DepositModel>();
   let depositSeed = 1;
-  const syncGuide = createGuide(scene, planet);
-  const syncPiles = createPilesView(scene, planet, pool);
   const pops: Array<{ object: Object3D; t: number }> = [];
-  let ridgeSink = state.unlocked.has(planet.ridge.unlockId) ? 1 : 0;
-  let ridgeSinking = false;
-  const playerPosition = new Vector3();
+  const syncGuide = createGuide(scene, planet, (s) => {
+    const objective = planet.objectives[s.objectiveIndex];
+    if (!objective) return null;
+    return s.order && ORDER_CHECKS.has(objective.check.kind) ? orderSite(s, s.order) : objective.target;
+  });
+  const syncPiles = createPilesView(scene, planet, pool);
+  const tip = new Vector3();
 
-  function syncRocket(time: number, dt: number): void {
-    rocketPad.root.visible = isRocketReachable(state);
-    const parts = Object.entries(planet.rocket.parts) as Array<[ItemId, number]>;
-    const detail = parts.map(([item, needed]) => `${ITEMS[item].plural} ${state.rocket[item]}/${needed}`).join("  ·  ");
-    if (rocketComplete(state)) rocketPad.label.set("READY TO LAUNCH", "Stand here to lift off", "ready");
-    else rocketPad.label.set("LOAD THE ROCKET", detail);
-    rocketPad.setActive(distance(state.player, planet.rocket.pad) <= PADS.radius, time);
-    const filled = parts.reduce((sum, [item]) => sum + state.rocket[item], 0) / parts.reduce((sum, [, needed]) => sum + needed, 0);
-    rocketPad.setProgress(filled);
-    rocket.windowMaterial.emissiveIntensity = rocketComplete(state) ? 2 + Math.sin(time * 4) : 0.6 + filled;
-    rocket.setBuild(parts.map(([item, needed]) => ({ item, fraction: Math.min(1, state.rocket[item] / needed) })), rocketComplete(state), dt);
+  function syncStations(time: number, dt: number): void {
+    const onSuit = distance(state.player, planet.suitStation.pad) <= PADS.radius;
+    suitStation.update(time, dt, onSuit);
+    suitPad.setActive(onSuit, time);
+    suitPad.label.sprite.visible = !onSuit;
+    const benchBuilt = state.built.has("workbench");
+    workbench.visible = benchBuilt;
+    workbenchPad.root.visible = benchBuilt;
+    const onBench = distance(state.player, planet.workbench.pad) <= PADS.radius;
+    workbenchPad.setActive(onBench, time);
+    workbenchPad.label.sprite.visible = !onBench;
+    const arm = workbench.getObjectByName("arm");
+    if (arm) arm.rotation.y = Math.sin(time * 0.8) * 0.8;
+    drill.root.visible = drillBuild !== undefined && state.built.has(drillBuild.id);
+    drill.update(state.boring, time, dt);
   }
 
-  function syncPads(time: number): void {
-    for (const unlock of planet.unlocks) {
-      const pad = payPads.get(unlock.id);
-      if (!pad) continue;
-      const available = isPadAvailable(state, unlock);
-      pad.root.visible = available;
-      const dock = docks.get(unlock.id);
-      if (dock) {
-        dock.root.visible = state.unlocked.has(unlock.id);
-        const onDock = distance(state.player, unlock) <= PADS.radius;
-        dock.setActive(onDock, time);
-        // Once you stand on it the panel names it; the board would only sit behind your helmet.
-        dock.label.sprite.visible = !onDock;
-      }
-      if (!available) continue;
-      const paid = state.paid.get(unlock.id) ?? 0;
-      pad.label.set(unlock.label.toUpperCase(), `${unlock.cost - paid} credits`, "money");
-      pad.setProgress(paid / unlock.cost);
-      pad.setActive(distance(state.player, unlock) <= PADS.radius, time);
-    }
-    workshop.visible = state.unlocked.has("workshop");
-    workshopPad.root.visible = workshop.visible;
-    const onWorkshop = distance(state.player, workshopSpot) <= PADS.radius;
-    workshopPad.setActive(onWorkshop, time);
-    workshopPad.label.sprite.visible = !onWorkshop;
-    const arm = workshop.getObjectByName("arm");
-    if (arm) arm.rotation.y = Math.sin(time * 0.8) * 0.8;
-    sell.setActive(distance(state.player, planet.sellPad) <= PADS.radius, time);
-    // Up close the stall speaks for itself; the label would only hide Zix.
-    sell.label.sprite.visible = distance(state.player, planet.sellPad) > 4;
+  function syncRocket(time: number, dt: number): void {
+    const ready = rocketReady(state);
+    launchPad.root.visible = ready;
+    launchPad.setActive(distance(state.player, planet.rocket.pad) <= PADS.radius, time);
+    const driveOrder = state.order?.kind === "build" && buildDef(planet, state.order.targetId)?.kind === "jumpDrive";
+    const rows = driveOrder ? orderProgress(state) : [];
+    const needed = rows.reduce((sum, row) => sum + row.needed, 0);
+    const delivered = rows.reduce((sum, row) => sum + Math.min(row.delivered, row.needed), 0);
+    rocket.windowMaterial.emissiveIntensity = ready ? 2 + Math.sin(time * 4) : 0.4;
+    rocket.setBuild(needed > 0 ? delivered / needed : 0, ready, time, dt);
   }
 
   function syncDeposits(time: number): void {
@@ -183,14 +184,14 @@ export function buildWorld(scene: Scene, state: GameState, pool: ItemPool, shado
       let model = deposits.get(deposit.id);
       if (!model) {
         model = depositModel(deposit.item, depositSeed++, 5);
-        place(model.root, planet, deposit);
+        at(model.root, deposit);
         model.root.rotation.y = depositSeed * 1.7;
         scene.add(model.root);
         deposits.set(deposit.id, model);
         // Nodes that fell from the sky pop up out of their impact crater.
         if (time > 0) pops.push({ object: model.root, t: 0 });
       }
-      const reachable = deposit.zone === null || state.unlocked.has(deposit.zone);
+      const reachable = isAvailable(state, deposit.zone);
       const drilled = state.player.miningTarget === deposit.id || state.robots.some((r) => r.phase === "mining" && r.depositId === deposit.id);
       syncDeposit(model, reachable ? deposit.amount : deposit.maxAmount, deposit.maxAmount, drilled ? Math.sin(time * 50) * 0.035 : 0);
     }
@@ -201,67 +202,68 @@ export function buildWorld(scene: Scene, state: GameState, pool: ItemPool, shado
     }
   }
 
+  function syncPops(dt: number): void {
+    for (let i = pops.length - 1; i >= 0; i -= 1) {
+      const pop = pops[i] as { object: Object3D; t: number };
+      pop.t += dt / POP_SECONDS;
+      const t = Math.min(1, pop.t);
+      pop.object.scale.setScalar(Math.max(0.01, t * (1 + Math.sin(t * Math.PI) * 0.18)));
+      if (pop.t >= 1) {
+        pop.object.scale.setScalar(1);
+        pops.splice(i, 1);
+      }
+    }
+  }
+
   return {
     rocket,
-    merchant,
+    suitStation,
     storm,
     groundAt(point) {
       return new Vector3(point.x, heightAt(planet, point.x, point.z), point.z);
     },
     introProps() {
-      const props: DropProp[] = [
+      return [
         { object: dome, kind: "dome" },
-        { object: rocket.root, kind: "rocket" },
-        { object: merchant.root, kind: "trader" },
+        { object: suitStation.root, kind: "station" },
         ...decor.pieces.map((piece): DropProp => ({ object: piece.root, kind: piece.kind === "cable" ? "cable" : "decor" })),
-        { object: sell.root, kind: "pad" },
-        { object: rocketPad.root, kind: "pad" },
-        ...[...payPads.values(), ...docks.values()].map((pad): DropProp => ({ object: pad.root, kind: "pad" })),
+        { object: suitPad.root, kind: "pad" },
       ];
-      return props;
     },
-    feedMachine(machineId, second, delay) {
-      machines.feed(machineId, second, delay);
+    feedMachine(machineId, delay) {
+      machines.feed(machineId, delay);
     },
     onMachineIntake(handler) {
       machines.onIntake(handler);
     },
-    robotDock(id) {
-      const unlock = planet.unlocks.find((u) => u.id === id && (u.kind === "robot" || u.kind === "drone"));
-      return unlock ? { x: unlock.x, z: unlock.z } : null;
+    assemble(buildId) {
+      const model = modelOf(buildId);
+      if (model) assembler.start(model);
+      if (buildDef(planet, buildId)?.kind === "workbench") assembler.start(workbenchPad.root);
     },
-    celebrateUnlock(id) {
-      if (id === planet.ridge.unlockId) ridgeSinking = true;
-      const model = machines.modelOf(id);
-      if (model) pops.push({ object: model, t: 0 });
-      if (id === "workshop") pops.push({ object: workshop, t: 0 });
+    drillTip(s) {
+      if (s.boring === null || s.boring >= 1 || !drill.root.visible) return null;
+      return drill.tip.getWorldPosition(tip);
     },
     sync(_state, dt, time) {
       machines.sync(state, time, dt);
       storm.sync(state, dt, time);
+      syncStations(time, dt);
       syncRocket(time, dt);
-      syncPads(time);
+      workers.sync(state, time);
+      orders.sync(state, time);
       syncDeposits(time);
       syncGuide(state, time);
       syncPiles(state, time);
       decor.update(time);
-      playerPosition.set(state.player.x, 1.6, state.player.z);
-      merchant.update(time, dt, distance(state.player, planet.trader) < 7 ? playerPosition : null, distance(state.player, planet.sellPad) <= PADS.radius);
-
-      if (ridgeSinking || ridgeSink >= 1) ridgeSink = Math.min(1, ridgeSink + dt / 1.2);
+      assembler.update(dt);
+      syncPops(dt);
+      // The gap boulders crumble away as the drill bores through them.
+      const bored = state.boring ?? 0;
       for (const boulder of terrain.ridge.gapBoulders) {
-        boulder.visible = ridgeSink < 1;
-        boulder.scale.setScalar(Math.max(0.01, 1 - ridgeSink) * (boulder.userData.baseScale ?? (boulder.userData.baseScale = boulder.scale.x)));
-      }
-      for (let i = pops.length - 1; i >= 0; i -= 1) {
-        const pop = pops[i] as { object: Object3D; t: number };
-        pop.t += dt / POP_SECONDS;
-        const t = Math.min(1, pop.t);
-        pop.object.scale.setScalar(Math.max(0.01, t * (1 + Math.sin(t * Math.PI) * 0.18)));
-        if (pop.t >= 1) {
-          pop.object.scale.setScalar(1);
-          pops.splice(i, 1);
-        }
+        const base = (boulder.userData.baseScale as number | undefined) ?? (boulder.userData.baseScale = boulder.scale.x);
+        boulder.visible = bored < 1;
+        boulder.scale.setScalar(Math.max(0.01, 1 - bored) * base);
       }
       sun.position.set(state.player.x + SUN_OFFSET.x, SUN_OFFSET.y, state.player.z + SUN_OFFSET.z);
       sun.target.position.set(state.player.x, 0, state.player.z);

@@ -11,10 +11,11 @@
 
 <div id="hud" hidden>
   <div class="status">
-    <div class="credits glass" aria-label="Credits">
-      <svg class="credits-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 21 12 12 22 3 12Z" fill="#ffd25a"/><path d="M12 6 17 12 12 18 7 12Z" fill="#fff3c4"/></svg>
-      <span id="credits">0</span>
-    </div>
+    <section class="order-chip glass" id="order-chip" aria-label="Current build" hidden>
+      <p class="order-eyebrow">Building</p>
+      <p class="order-title" id="order-title"></p>
+      <ul class="order-list" id="order-list"></ul>
+    </section>
     <div class="chip glass">
       <div class="chip-row"><span class="chip-label">Backpack</span><span class="chip-value" id="carry">0/8</span></div>
       <div class="bar"><div id="carry-bar"></div></div>

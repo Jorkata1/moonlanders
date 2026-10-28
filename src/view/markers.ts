@@ -1,13 +1,13 @@
 import { ConeGeometry, Group, Mesh, MeshBasicMaterial, RingGeometry, type Scene } from "three";
-import type { PlanetDef } from "../planets/types";
+import type { PlanetDef, Point } from "../planets/types";
 import { distance, type GameState } from "../sim/state";
 import { StackView, type ItemPool } from "./items";
 import { heightAt } from "./terrain";
 
 const GUIDE_HIDE_DISTANCE = 2.2;
 
-/** Green arrow at the player's feet pointing to the current mission target, plus a ring on the target. */
-export function createGuide(scene: Scene, planet: PlanetDef): (state: GameState, time: number) => void {
+/** Green arrow at the player's feet pointing to `target`, plus a ring on the target. */
+export function createGuide(scene: Scene, planet: PlanetDef, target: (state: GameState) => Point | null): (state: GameState, time: number) => void {
   const material = new MeshBasicMaterial({ color: 0x5df2a0, transparent: true, opacity: 0.85, depthWrite: false });
   const arrow = new Group();
   const head = new Mesh(new ConeGeometry(0.28, 0.6, 3), material);
@@ -19,15 +19,15 @@ export function createGuide(scene: Scene, planet: PlanetDef): (state: GameState,
   scene.add(arrow, beacon);
 
   return (state, time) => {
-    const objective = planet.objectives[state.objectiveIndex];
+    const goal = target(state);
     const player = state.player;
-    arrow.visible = objective !== undefined && distance(player, objective.target) > GUIDE_HIDE_DISTANCE && player.stunned <= 0;
-    beacon.visible = objective !== undefined;
-    if (!objective) return;
-    beacon.position.set(objective.target.x, heightAt(planet, objective.target.x, objective.target.z) + 0.08, objective.target.z);
+    arrow.visible = goal !== null && distance(player, goal) > GUIDE_HIDE_DISTANCE && player.stunned <= 0;
+    beacon.visible = goal !== null;
+    if (!goal) return;
+    beacon.position.set(goal.x, heightAt(planet, goal.x, goal.z) + 0.08, goal.z);
     beacon.scale.setScalar(1 + Math.sin(time * 4) * 0.08);
     arrow.position.set(player.x, heightAt(planet, player.x, player.z) + 0.1, player.z);
-    arrow.rotation.y = Math.atan2(objective.target.x - player.x, objective.target.z - player.z);
+    arrow.rotation.y = Math.atan2(goal.x - player.x, goal.z - player.z);
   };
 }
 

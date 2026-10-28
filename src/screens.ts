@@ -39,7 +39,7 @@ export function startEyebrow(planet: PlanetDef): string {
 }
 
 export function startText(planet: PlanetDef): string {
-  return `Mine ${planet.phrase}, build machines and load your rocket. When it's ready, fly on to the next world.`;
+  return `Stranded on ${planet.phrase}: mine it, build machines and robots from what you dig up, and repair your rocket's jump drive to fly on.`;
 }
 
 export function totalMined(state: GameState): number {
@@ -57,7 +57,7 @@ export function completeText(state: GameState): CompleteText {
   const upcoming = UPCOMING[0];
   return {
     eyebrow: `${state.planet.name} complete`,
-    text: upcoming ? `Your rocket is on its way to the ${upcoming.label.toLowerCase()}. It lands in the next update.` : "You have reached the end of the route. Well flown, pioneer.",
-    stats: `${state.stats.earned.toLocaleString("en-US")} credits earned · ${totalMined(state)} resources mined on ${state.planet.phrase}`,
+    text: upcoming ? `Your rocket is on its way to ${upcoming.label === "Mars" ? "Mars" : `the ${upcoming.label.toLowerCase()}`}. It lands in a coming update.` : "You have reached the end of the route. Well flown, pioneer.",
+    stats: `${state.built.size} things built · ${totalMined(state)} materials mined on ${state.planet.phrase}`,
   };
 }

@@ -42,7 +42,7 @@ function loadState(): GameState {
 }
 
 function hasProgress(state: GameState): boolean {
-  return state.stats.earned > 0 || state.unlocked.size > 0 || totalMined(state) > 0;
+  return state.built.size > 0 || totalMined(state) > 0;
 }
 
 async function boot(): Promise<void> {
@@ -113,7 +113,7 @@ async function boot(): Promise<void> {
       controls,
       hud,
       audio,
-      { playIntro: !arrivalSeen(settings, state.planet.id) && !hasProgress(state), fullIntro: state.planet.id === PLANETS[0]?.id, tutorialDone: settings.tutorialDone, seenTips: new Set(settings.tips), touch: isTouch },
+      { playIntro: !arrivalSeen(settings, state.planet.id) && !hasProgress(state), tutorialDone: settings.tutorialDone, seenTips: new Set(settings.tips), touch: isTouch },
       {
         onSave: save,
         onLaunched: travelOn,
@@ -225,7 +225,7 @@ async function boot(): Promise<void> {
     saveSettings();
     renderSound();
   });
-  hud.onBuy((key, id) => game.buy(key, id));
+  hud.onOrder((key, id) => game.order(key, id));
   hud.onToggle((key) => game.toggle(key));
   hud.onDrop((item) => game.drop(item));
   hud.onCoachOk(() => game.acknowledgeCoach());

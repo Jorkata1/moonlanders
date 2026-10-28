@@ -1,26 +1,26 @@
-import { DRONE_UPGRADES, DRONE_UPGRADE_IDS, ITEM_IDS, MACHINE, ROBOT_UPGRADES, ROBOT_UPGRADE_IDS, UPGRADES, UPGRADE_IDS, oxygenFor, type DroneUpgradeId, type ItemId, type RobotUpgradeId, type UpgradeId } from "../config";
+import { DEPOSIT, ITEM_IDS, MAX_STAGE, ROBOT, SUIT_UPGRADES, SUIT_UPGRADE_IDS, oxygenFor, type ItemId, type SuitUpgradeId } from "../config";
 import { PLANETS, planetById } from "../planets";
 import type { PlanetDef } from "../planets/types";
-import { createState, type GameState } from "./state";
+import { orderCost } from "./orders";
+import { buildDef, createState, fieldKey, zeroItems, type GameState, type OrderKind } from "./state";
 
-const SAVE_VERSION = 2;
+/** Version 3 is the materials economy; older saves (credits and Zix) start a fresh game. */
+const SAVE_VERSION = 3;
+const ORDER_KINDS: readonly OrderKind[] = ["build", "suit", "stage"];
 
 /** What survives a reload. Positions, carried items and hazards reset to keep saves simple and fair. */
 export interface SaveData {
   version: number;
   planetId: string;
-  credits: number;
-  unlocked: string[];
-  paid: Record<string, number>;
-  upgrades: Record<UpgradeId, number>;
-  robotUpgrades: Record<string, Record<RobotUpgradeId, number>>;
-  /** Added in 1.3; older saves simply have no drones. */
-  droneUpgrades?: Record<string, Record<DroneUpgradeId, number>>;
-  droneEnabled?: Record<string, boolean>;
-  rocket: Record<ItemId, number>;
-  machines: Record<string, { input: number; secondInput: number; output: number; processed: number }>;
+  built: string[];
+  order: { kind: OrderKind; targetId: string; delivered: Record<ItemId, number> } | null;
+  suit: Record<SuitUpgradeId, number>;
+  stages: Record<string, number>;
+  enabled: Record<string, boolean>;
+  stockpiles: Record<string, number>;
+  machines: Record<string, { input: number; output: number; processed: number }>;
+  boring: number | null;
   mined: Record<ItemId, number>;
-  earned: number;
   objectiveIndex: number;
   launched: boolean;
 }
@@ -29,17 +29,15 @@ export function toSave(state: GameState): SaveData {
   return {
     version: SAVE_VERSION,
     planetId: state.planet.id,
-    credits: state.credits,
-    unlocked: [...state.unlocked],
-    paid: Object.fromEntries(state.paid),
-    upgrades: { ...state.upgrades },
-    robotUpgrades: JSON.parse(JSON.stringify(state.robotUpgrades)) as Record<string, Record<RobotUpgradeId, number>>,
-    droneUpgrades: JSON.parse(JSON.stringify(state.droneUpgrades)) as Record<string, Record<DroneUpgradeId, number>>,
-    droneEnabled: { ...state.droneEnabled },
-    rocket: { ...state.rocket },
-    machines: Object.fromEntries([...state.machines.values()].map((m) => [m.id, { input: m.input, secondInput: m.secondInput, output: m.output, processed: m.processed }])),
+    built: [...state.built],
+    order: state.order ? { kind: state.order.kind, targetId: state.order.targetId, delivered: { ...state.order.delivered } } : null,
+    suit: { ...state.suit },
+    stages: { ...state.stages },
+    enabled: { ...state.enabled },
+    stockpiles: { ...state.stockpiles },
+    machines: Object.fromEntries([...state.machines.values()].map((m) => [m.id, { input: m.input, output: m.output, processed: m.processed }])),
+    boring: state.boring,
     mined: { ...state.stats.mined },
-    earned: state.stats.earned,
     objectiveIndex: state.objectiveIndex,
     launched: state.launched,
   };
@@ -53,51 +51,65 @@ function record(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
 }
 
+function restoreOrder(state: GameState, raw: unknown): void {
+  const data = record(raw);
+  const kind = ORDER_KINDS.find((k) => k === data.kind);
+  const targetId = typeof data.targetId === "string" ? data.targetId : null;
+  if (!kind || !targetId) {
+    state.order = null;
+    return;
+  }
+  const valid =
+    (kind === "build" && buildDef(state.planet, targetId) !== undefined && !state.built.has(targetId)) ||
+    (kind === "suit" && (SUIT_UPGRADE_IDS as readonly string[]).includes(targetId)) ||
+    (kind === "stage" && state.built.has(targetId) && targetId in state.stages);
+  if (!valid) {
+    state.order = null;
+    return;
+  }
+  state.order = { kind, targetId, delivered: zeroItems() };
+  const cost = orderCost(state, state.order);
+  const delivered = record(data.delivered);
+  for (const item of ITEM_IDS) state.order.delivered[item] = count(delivered[item], cost[item] ?? 0);
+}
+
 /** Rebuild a game from untrusted saved JSON, ignoring anything malformed or unknown. */
 export function fromSave(planet: PlanetDef, raw: unknown): GameState {
   const state = createState(planet);
   const data = record(raw);
-  if (data.planetId !== planet.id) return state;
+  if (data.planetId !== planet.id || data.version !== SAVE_VERSION) return state;
 
-  const knownUnlocks = new Set(planet.unlocks.map((u) => u.id));
-  state.credits = count(data.credits);
-  if (Array.isArray(data.unlocked)) for (const id of data.unlocked) if (typeof id === "string" && knownUnlocks.has(id)) state.unlocked.add(id);
-  for (const [id, paid] of Object.entries(record(data.paid))) {
-    const unlock = planet.unlocks.find((u) => u.id === id);
-    if (unlock && !state.unlocked.has(id)) state.paid.set(id, count(paid, unlock.cost - 1));
+  const known = new Set([...planet.builds.map((b) => b.id), planet.ridge.openId]);
+  if (Array.isArray(data.built)) for (const id of data.built) if (typeof id === "string" && known.has(id)) state.built.add(id);
+  // Fields hidden at the start (iron) are on the map once their zone is built.
+  for (const deposit of planet.deposits) {
+    if (deposit.hidden && deposit.zone && state.built.has(deposit.zone)) state.deposits.push({ ...deposit, field: fieldKey(deposit.item, deposit.zone), amount: DEPOSIT.amount, maxAmount: DEPOSIT.amount, rubble: 0 });
   }
-  const upgrades = record(data.upgrades);
-  for (const id of UPGRADE_IDS) state.upgrades[id] = count(upgrades[id], UPGRADES[id].costs.length);
-  const robotUpgrades = record(data.robotUpgrades);
-  for (const [robotId, levels] of Object.entries(state.robotUpgrades)) {
-    const saved = record(robotUpgrades[robotId]);
-    for (const id of ROBOT_UPGRADE_IDS) levels[id] = count(saved[id], ROBOT_UPGRADES[id].costs.length);
-  }
-  const droneUpgrades = record(data.droneUpgrades);
-  const droneEnabled = record(data.droneEnabled);
-  for (const [droneId, levels] of Object.entries(state.droneUpgrades)) {
-    const saved = record(droneUpgrades[droneId]);
-    for (const id of DRONE_UPGRADE_IDS) levels[id] = count(saved[id], DRONE_UPGRADES[id].costs.length);
-    if (typeof droneEnabled[droneId] === "boolean") state.droneEnabled[droneId] = droneEnabled[droneId] as boolean;
-  }
-  const rocket = record(data.rocket);
-  const mined = record(data.mined);
-  for (const item of ITEM_IDS) {
-    state.rocket[item] = count(rocket[item], planet.rocket.parts[item] ?? 0);
-    state.stats.mined[item] = count(mined[item]);
-  }
+  restoreOrder(state, data.order);
+  const suit = record(data.suit);
+  for (const id of SUIT_UPGRADE_IDS) state.suit[id] = count(suit[id], SUIT_UPGRADES[id].costs.length);
+  const stages = record(data.stages);
+  for (const id of Object.keys(state.stages)) state.stages[id] = count(stages[id], MAX_STAGE);
+  const enabled = record(data.enabled);
+  for (const id of Object.keys(state.enabled)) if (typeof enabled[id] === "boolean") state.enabled[id] = enabled[id] as boolean;
+  const stockpiles = record(data.stockpiles);
+  for (const id of Object.keys(state.stockpiles)) state.stockpiles[id] = count(stockpiles[id], ROBOT.stockpileCapacity);
   const machines = record(data.machines);
   for (const machine of state.machines.values()) {
+    const def = planet.machines.find((m) => m.id === machine.id);
+    const top = def?.levels[def.levels.length - 1];
     const saved = record(machines[machine.id]);
-    machine.input = count(saved.input, MACHINE.inputCapacity);
-    machine.secondInput = count(saved.secondInput, MACHINE.inputCapacity);
-    machine.output = count(saved.output, MACHINE.outputCapacity);
+    machine.input = count(saved.input, top?.inputCapacity ?? 0);
+    machine.output = count(saved.output, top?.outputCapacity ?? 0);
     machine.processed = count(saved.processed);
   }
-  state.stats.earned = count(data.earned);
+  if (state.built.has(planet.ridge.openId)) state.boring = 1;
+  else if (typeof data.boring === "number" && planet.builds.some((b) => b.kind === "drill" && state.built.has(b.id))) state.boring = Math.min(0.99, count(data.boring * 100) / 100);
+  const mined = record(data.mined);
+  for (const item of ITEM_IDS) state.stats.mined[item] = count(mined[item]);
   state.objectiveIndex = count(data.objectiveIndex, planet.objectives.length);
   state.launched = data.launched === true;
-  state.player.oxygen = oxygenFor(state.upgrades.oxygen);
+  state.player.oxygen = oxygenFor(state.suit.oxygen);
   return state;
 }
 

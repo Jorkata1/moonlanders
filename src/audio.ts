@@ -2,7 +2,7 @@
 
 import { createMusic, type Music, type MusicMood } from "./music";
 
-export type Cue = "mine" | "pickup" | "drop" | "coin" | "pay" | "build" | "error" | "warning" | "impact" | "alarm" | "objective" | "upgrade" | "launch" | "wind" | "thud";
+export type Cue = "mine" | "pickup" | "drop" | "pay" | "build" | "error" | "warning" | "impact" | "alarm" | "objective" | "upgrade" | "launch" | "wind" | "thud" | "lock" | "warmup";
 
 interface Tone {
   frequency: number;
@@ -17,10 +17,11 @@ const CUES: Record<Cue, Tone[]> = {
   mine: [{ frequency: 900, endFrequency: 1400, duration: 0.05, type: "square", gain: 0.035 }],
   pickup: [{ frequency: 520, endFrequency: 820, duration: 0.07, type: "triangle", gain: 0.14 }],
   drop: [{ frequency: 360, endFrequency: 240, duration: 0.07, type: "triangle", gain: 0.16 }],
-  coin: [
-    { frequency: 1318, duration: 0.06, type: "triangle", gain: 0.1 },
-    { frequency: 1975, duration: 0.12, type: "triangle", gain: 0.1, delay: 0.05 },
+  lock: [
+    { frequency: 880, endFrequency: 1760, duration: 0.09, type: "triangle", gain: 0.1 },
+    { frequency: 1760, duration: 0.08, type: "sine", gain: 0.08, delay: 0.08 },
   ],
+  warmup: [{ frequency: 180, endFrequency: 620, duration: 1.9, type: "sawtooth", gain: 0.018 }],
   pay: [{ frequency: 740, endFrequency: 780, duration: 0.04, type: "sine", gain: 0.08 }],
   build: [
     { frequency: 392, duration: 0.12, type: "triangle", gain: 0.16 },

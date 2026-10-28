@@ -64,12 +64,13 @@ export function smelterModel(): MachineModel {
   };
 }
 
-export function purifierModel(): MachineModel {
+/** Helium refinery: Helium X is crushed into glowing tanks and bottled into helium cells. */
+export function refineryModel(): MachineModel {
   const root = new Group();
   const rig = base(root);
-  const glass = new MeshStandardMaterial({ color: 0xbfefff, transparent: true, opacity: 0.22, roughness: 0.05, metalness: 0.1, depthWrite: false });
+  const glass = new MeshStandardMaterial({ color: 0xe2d4ff, transparent: true, opacity: 0.22, roughness: 0.05, metalness: 0.1, depthWrite: false });
   glass.userData.reflective = true;
-  const water = surface({ color: 0x3aa8ff, emissive: 0x1a7ad8, emissiveIntensity: 0.9, roughness: 0.15, noShadow: true }).clone();
+  const water = surface({ color: 0x9a6bff, emissive: 0x7a3dff, emissiveIntensity: 0.9, roughness: 0.15, noShadow: true }).clone();
   const waterColumns: Mesh[] = [];
   const bubbles: Mesh[] = [];
   const bubbleGroup = new Group();
@@ -87,7 +88,7 @@ export function purifierModel(): MachineModel {
     root.add(mesh(new SphereGeometry(0.5, 24, 10, 0, Math.PI * 2, 0, Math.PI / 2), LOOK.white(), x, 0.44 + height, z));
     for (const y of [0.9, 0.44 + height - 0.3]) root.add(mesh(new TorusGeometry(0.48, 0.04, 6, 24), LOOK.steel(), x, y, z).rotateX(Math.PI / 2));
     for (let i = 0; i < 5; i += 1) {
-      const bubble = mesh(new SphereGeometry(0.04, 8, 6), glow(0xd8f6ff, 1.2), x, 0.6, z);
+      const bubble = mesh(new SphereGeometry(0.04, 8, 6), glow(0x6dffd2, 1.6), x, 0.6, z);
       bubble.userData.baseX = x + (i % 2 === 0 ? -0.15 : 0.15);
       bubble.userData.baseZ = z + (i - 2) * 0.06;
       bubble.userData.height = height;
@@ -97,7 +98,7 @@ export function purifierModel(): MachineModel {
   }
   root.add(mesh(new TorusGeometry(0.5, 0.07, 8, 20, Math.PI), LOOK.steel(), 0.25, 2.15, -0.45));
 
-  // Ice crusher with spinning teeth above the hopper.
+  // Crystal crusher with spinning teeth above the hopper.
   const crusher = new Group();
   crusher.userData.dynamic = true;
   for (let i = 0; i < 6; i += 1) crusher.add(box(0.5, 0.06, 0.06, LOOK.teal()).rotateY((i / 6) * Math.PI));
@@ -115,8 +116,8 @@ export function purifierModel(): MachineModel {
   const belt = beltMaterial();
   const input = intake(root, belt);
   const output = outlet(root);
-  const screen = consolePanel(root, -0.1, 0.65, 0x4de3ff);
-  const steam = emitter(root, 0.75, 2.2, -0.45, 0xe8f6ff, 6, 1.4);
+  const screen = consolePanel(root, -0.1, 0.65, 0x6dffd2);
+  const steam = emitter(root, 0.75, 2.2, -0.45, 0xd8c8ff, 6, 1.4);
 
   return {
     root,

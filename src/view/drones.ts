@@ -1,7 +1,7 @@
 import { CylinderGeometry, Group, SphereGeometry, TorusGeometry, Vector3, type MeshStandardMaterial, type Scene } from "three";
 import { DRONE, droneCapacityFor, type ItemId } from "../config";
 import type { PlanetDef } from "../planets/types";
-import { zeroDroneUpgrades, type DroneState, type GameState } from "../sim/state";
+import type { DroneState, GameState } from "../sim/state";
 import { bakeStatic } from "./bake";
 import { StackView, type ItemPool } from "./items";
 import { LOOK, box, glow, mesh, surface } from "./materials";
@@ -76,11 +76,6 @@ export interface DronesView {
   positionOf(id: string): Vector3 | null;
 }
 
-function itemOf(planet: PlanetDef, drone: DroneState): ItemId {
-  const machine = planet.machines.find((m) => m.id === drone.machineId);
-  if (!machine) throw new Error(`Drone ${drone.id} serves unknown machine ${drone.machineId}`);
-  return machine.output;
-}
 
 function turnToward(current: number, target: number, amount: number): number {
   const delta = Math.atan2(Math.sin(target - current), Math.cos(target - current));
@@ -109,13 +104,12 @@ export function createDronesView(scene: Scene, pool: ItemPool, planet: PlanetDef
         const bob = parked ? 0 : Math.sin(time * 3 + drone.x) * 0.08;
         model.root.position.set(drone.x, heightAt(planet, drone.x, drone.z) + view.height + bob, drone.z);
         model.root.rotation.y = view.heading;
-        const flying = drone.phase === "toMachine" || drone.phase === "toTrader" || drone.phase === "returning";
+        const flying = drone.phase === "toSource" || drone.phase === "toOrder" || drone.phase === "restocking" || drone.phase === "returning";
         model.body.rotation.x = flying ? 0.18 : 0;
         for (const rotor of model.rotors) rotor.rotation.y += dt * (parked ? 2 : 32);
-        model.lights.emissive.setHex(state.droneEnabled[drone.id] === false ? 0xff6b5a : 0x5df2a0);
-        const levels = state.droneUpgrades[drone.id] ?? zeroDroneUpgrades();
-        const shown = Math.min(drone.carry, droneCapacityFor(levels.capacity));
-        view.stack.sync(new Array<ItemId>(shown).fill(itemOf(planet, drone)), time, 0);
+        model.lights.emissive.setHex(state.enabled[drone.id] === false ? 0xff6b5a : 0x5df2a0);
+        const shown = drone.cargo ? Math.min(drone.carry, droneCapacityFor(state.stages[drone.id] ?? 0)) : 0;
+        view.stack.sync(new Array<ItemId>(shown).fill(drone.cargo ?? "plate"), time, 0);
       }
     },
     positionOf(id) {

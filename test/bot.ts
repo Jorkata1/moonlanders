@@ -1,97 +1,153 @@
-/** Simple autopilot used by tests and screenshot harnesses. Works on any planet by reading its PlanetDef. */
-import { distance, rocketComplete, rocketNeeds, isAvailable, type GameState } from "../src/sim/state";
-import { step } from "../src/sim/step";
-import { carryCapacity, isPadAvailable, buyUpgrade } from "../src/sim/economy";
-import { MACHINE, oxygenFor, ROBOT_UPGRADE_IDS, ROBOT_UPGRADES, UPGRADE_IDS, UPGRADES, type ItemId } from "../src/config";
-import { buyRobotUpgrade } from "../src/sim/inventory";
+/** Simple autopilot used by tests and screenshot harnesses: plays the materials economy like a player would. */
+import { PADS, oxygenFor, type ItemId, type SuitUpgradeId } from "../src/config";
 import type { MachineDef, Point } from "../src/planets/types";
+import { carryCapacity, machineStats } from "../src/sim/economy";
+import { carriedCounts, dropItems } from "../src/sim/inventory";
 import type { SimEvent } from "../src/sim/events";
+import { routeToward } from "../src/sim/movement";
+import { orderNeeds, orderSite, startBuild, startStageUpgrade, startSuitUpgrade } from "../src/sim/orders";
+import { buildDef, distance, isAvailable, rocketReady, stockpileSpot, type GameState } from "../src/sim/state";
+import { step } from "../src/sim/step";
 
-const FEED_ROOM = MACHINE.inputCapacity;
-const KEEP_FED = 15;
-const COLLECT_AT = 4;
+type Plan = { kind: "build"; id: string } | { kind: "suit"; id: SuitUpgradeId } | { kind: "stage"; id: string };
+
+/** The order a sensible player builds things in. */
+const PLAN: readonly Plan[] = [
+  { kind: "build", id: "workbench" },
+  { kind: "build", id: "smelter" },
+  { kind: "suit", id: "capacity" },
+  { kind: "build", id: "robot-carbon" },
+  { kind: "build", id: "robot-iron" },
+  { kind: "build", id: "drone" },
+  { kind: "suit", id: "oxygen" },
+  { kind: "build", id: "robot-clay" },
+  { kind: "build", id: "smelter-2" },
+  { kind: "stage", id: "robot-carbon" },
+  { kind: "suit", id: "capacity" },
+  { kind: "suit", id: "oxygen" },
+  { kind: "build", id: "drill" },
+  { kind: "stage", id: "robot-carbon" },
+  { kind: "stage", id: "drone" },
+  { kind: "build", id: "refinery" },
+  { kind: "build", id: "jumpDrive" },
+];
+
+/** Gather the slowest-to-make materials first. */
+const PRIORITY: readonly ItemId[] = ["heliumCell", "plate", "clay", "carbon"];
 
 export function createBot(state: GameState, seed = 42) {
   const planet = state.planet;
   const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  const rawItems = new Set(planet.deposits.map((d) => d.item));
-  const built = (def: MachineDef) => state.unlocked.has(def.id);
-  const machine = (def: MachineDef) => state.machines.get(def.id)!;
-  const lastMachine = planet.machines[planet.machines.length - 1]!;
+  let planIndex = 0;
+  const machineFor = (output: ItemId): MachineDef | undefined => planet.machines.find((m) => m.output === output);
+  const carried = (item: ItemId) => state.player.carry.filter((i) => i === item).length;
 
-  function waypoint(target: Point): Point {
-    const ridge = planet.ridge.z;
-    const p = state.player;
-    if ((p.z > ridge) === (target.z > ridge)) return target;
-    const side = p.z > ridge ? 1 : -1;
-    if (Math.abs(p.x) > 0.6) return { x: 0, z: ridge + side * 1.6 };
-    return { x: 0, z: ridge - side * 1.6 };
+  /** How many times this plan's upgrade appears up to and including it, i.e. the level it aims for. */
+  function targetLevel(index: number): number {
+    const plan = PLAN[index] as Plan;
+    return PLAN.slice(0, index + 1).filter((p) => p.kind === plan.kind && p.id === plan.id).length;
+  }
+
+  function planDone(index: number): boolean {
+    const plan = PLAN[index] as Plan;
+    if (plan.kind === "build") return state.built.has(plan.id);
+    if (plan.kind === "suit") return state.suit[plan.id] >= targetLevel(index);
+    return (state.stages[plan.id] ?? 0) >= targetLevel(index);
+  }
+
+  /** Walk to where the next order is placed, and place it once there. */
+  function orderNext(): Point | null {
+    while (planIndex < PLAN.length && planDone(planIndex)) planIndex += 1;
+    const plan = PLAN[planIndex];
+    if (!plan) return null;
+    const station = plan.kind === "suit" ? planet.suitStation.pad : plan.kind === "stage" ? (buildDef(planet, plan.id)?.site ?? planet.workbench.pad) : planet.workbench.pad;
+    if (distance(state.player, station) > PADS.radius) return station;
+    const ignore = () => undefined;
+    if (plan.kind === "build") startBuild(state, plan.id, ignore);
+    else if (plan.kind === "suit") startSuitUpgrade(state, plan.id, ignore);
+    else startStageUpgrade(state, plan.id, ignore);
+    return station;
   }
 
   function nearestDeposit(item: ItemId): Point | null {
-    let best: Point | null = null, bd = 1e9;
+    let best: Point | null = null;
+    let bestDistance = Infinity;
     for (const d of state.deposits) {
       if (d.item !== item || d.amount <= 0 || !isAvailable(state, d.zone)) continue;
       const dist = distance(state.player, d);
-      if (dist < bd) { bd = dist; best = d; }
+      if (dist < bestDistance) {
+        bestDistance = dist;
+        best = d;
+      }
     }
     return best;
   }
 
-  /** Something still needs this item: the rocket, or a built machine with room for it. */
-  function wanted(item: ItemId): boolean {
-    if (rocketNeeds(state, item) > 0) return true;
-    return planet.machines.some((def) => built(def) && ((def.input === item && machine(def).input < KEEP_FED) || (def.secondInput?.item === item && machine(def).secondInput < KEEP_FED)));
-  }
-
-  function feedPad(): Point | null {
-    const carry = state.player.carry;
-    for (const def of planet.machines) {
-      if (!built(def)) continue;
-      if (carry.includes(def.input) && machine(def).input < FEED_ROOM) return def.inputPad;
-      if (def.secondInput && carry.includes(def.secondInput.item) && machine(def).secondInput < FEED_ROOM) return def.secondInput.pad;
+  /** A robot stockpile of `item` worth walking to. */
+  function stockpileOf(item: ItemId, want: number): Point | null {
+    for (const id of Object.keys(state.stockpiles)) {
+      const build = buildDef(planet, id);
+      if (build?.item === item && (state.stockpiles[id] ?? 0) >= Math.min(want, 6)) return stockpileSpot(build);
     }
     return null;
   }
 
+  /** Get a machine's output: collect it if there is some, otherwise mine a full load and feed the input. */
+  function produce(def: MachineDef, wanted: number): Point {
+    const machine = state.machines.get(def.id);
+    if (!machine || machine.output > 0) return def.outputPad;
+    const free = carryCapacity(state) - state.player.carry.length;
+    const stillToFeed = Math.max(0, wanted * def.inputPerItem - machine.input);
+    const room = machineStats(state, def).inputCapacity - machine.input;
+    const load = carried(def.input);
+    if (load > 0 && room > 0 && (free === 0 || load >= Math.min(stillToFeed, room))) return def.inputPad;
+    if (stillToFeed > load) return nearestDeposit(def.input) ?? def.outputPad;
+    return load > 0 ? def.inputPad : def.outputPad;
+  }
+
   function decide(): Point {
     const p = state.player;
-    const max = oxygenFor(state.upgrades.oxygen);
-    const stormy = state.storm.phase !== "calm";
-    if (p.oxygen < max * (stormy ? 0.55 : 0.3) || (distance(p, planet.dome) < planet.dome.radius && p.oxygen < max * 0.95)) return planet.dome;
-    if (rocketComplete(state)) return planet.rocket.pad;
-    // Follow the mission order like a player would.
-    const goal = planet.objectives[state.objectiveIndex]?.check;
-    for (const u of planet.unlocks) {
-      const isGoal = goal?.kind === "unlocked" && goal.id === u.id;
-      if (isGoal && isPadAvailable(state, u) && state.credits >= u.cost - (state.paid.get(u.id) ?? 0)) return u;
-    }
+    const max = oxygenFor(state.suit.oxygen);
+    if (p.oxygen < max * 0.3 || (distance(p, planet.dome) < planet.dome.radius && p.oxygen < max * 0.95)) return planet.dome;
+    if (rocketReady(state)) return planet.rocket.pad;
+    if (!state.order) return orderNext() ?? planet.workbench.pad;
+
     const full = p.carry.length >= carryCapacity(state);
-    const rocketOpen = built(lastMachine);
-    const carriesRaw = p.carry.some((i) => rawItems.has(i));
-    if (rocketOpen && p.carry.some((i) => rocketNeeds(state, i) > 0) && (full || !carriesRaw)) return planet.rocket.pad;
-    if (full || (p.carry.length > 0 && !carriesRaw)) return feedPad() ?? planet.sellPad;
+    const site = orderSite(state, state.order);
+    const remaining = (item: ItemId) => orderNeeds(state, item) - carried(item);
+    const carriesNeeded = p.carry.some((item) => orderNeeds(state, item) > 0);
+    const want = PRIORITY.find((item) => remaining(item) > 0);
+    // Once at the hologram, stay until everything useful is handed over.
+    if (carriesNeeded && (full || !want || distance(p, site) <= PADS.radius)) return site;
+    // Raw inputs go into their machine once the backpack is full (and are all unloaded once there).
     for (const def of planet.machines) {
-      if (!built(def) || machine(def).output < COLLECT_AT) continue;
-      if (wanted(def.output) || !rocketOpen) return def.outputPad;
+      if (!state.built.has(def.id) || carried(def.input) === 0) continue;
+      const room = (state.machines.get(def.id)?.input ?? 0) < machineStats(state, def).inputCapacity;
+      if (room && (full || distance(p, def.inputPad) <= PADS.radius)) return def.inputPad;
     }
-    // Mine whatever raw material a hungry machine wants; otherwise the first raw item, for cash.
-    const hungry = planet.machines.find((def) => built(def) && rawItems.has(def.input) && machine(def).input < KEEP_FED && wanted(def.output));
-    const first = planet.deposits[0]!.item;
-    return nearestDeposit(hungry?.input ?? first) ?? nearestDeposit(first) ?? planet.sellPad;
+    if (!want) return site;
+    const maker = machineFor(want);
+    if (maker) return state.built.has(maker.id) ? produce(maker, remaining(want)) : site;
+    return stockpileOf(want, remaining(want)) ?? nearestDeposit(want) ?? site;
   }
 
   /** Advance one tick of bot play; returns the sim events. */
+  /** A backpack full of things nothing wants (picked up by walking over a stockpile) gets emptied. */
+  function dropUseless(): void {
+    const p = state.player;
+    if (p.carry.length < carryCapacity(state)) return;
+    const useful = (item: ItemId) => orderNeeds(state, item) > 0 || planet.machines.some((m) => state.built.has(m.id) && m.input === item);
+    if (p.carry.some(useful)) return;
+    const most = carriedCounts(p.carry).sort((a, b) => b.count - a.count)[0];
+    if (most) dropItems(state, most.item, most.count, () => undefined);
+  }
+
   return function tick(dt: number): SimEvent[] {
-    // Like a player: grab the first backpack upgrade as soon as the workshop exists, then spend spare money.
-    if (state.unlocked.has("workshop") && state.upgrades.capacity === 0 && state.credits >= UPGRADES.capacity.costs[0]!) buyUpgrade(state, "capacity", () => {});
-    if (state.unlocked.has(planet.ridge.unlockId) && !built(lastMachine)) for (const id of UPGRADE_IDS) { const c = UPGRADES[id].costs[state.upgrades[id]]; if (c !== undefined && state.credits > c + 150) buyUpgrade(state, id, () => {}); }
-    for (const robotId of Object.keys(state.robotUpgrades)) {
-      if (!state.unlocked.has(robotId) || (typeof process === "undefined" || process.env.ROBOT_UPGRADES !== "1")) continue;
-      for (const id of ROBOT_UPGRADE_IDS) { const c = ROBOT_UPGRADES[id].costs[state.robotUpgrades[robotId]![id]]; if (c !== undefined && state.credits > c + 200) buyRobotUpgrade(state, robotId, id, () => {}); }
-    }
-    const target = waypoint(decide());
-    const dx = target.x - state.player.x, dz = target.z - state.player.z;
+    dropUseless();
+    const goal = decide();
+    const target = routeToward(state, state.player, goal);
+    const dx = target.x - state.player.x;
+    const dz = target.z - state.player.z;
     const d = Math.hypot(dx, dz);
     const input = d < 0.3 ? { x: 0, z: 0 } : { x: dx / d, z: dz / d };
     return step(state, input, dt, random);

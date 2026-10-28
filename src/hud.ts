@@ -3,7 +3,9 @@ import { carryCapacity } from "./sim/economy";
 import { carriedCounts } from "./sim/inventory";
 import { isInsideDome } from "./sim/hazards";
 import { isStormRaging, type GameState } from "./sim/state";
-import { upgradeIconSvg, type UpgradeIcon } from "./upgradeIcons";
+import { createPanelView } from "./hudPanel";
+import type { UpgradePanel } from "./panels";
+import { orderLabel, orderProgress } from "./sim/orders";
 
 const TOAST_MS = 2600;
 
@@ -20,26 +22,6 @@ function hex(color: number): string {
 export type ToastTone = "info" | "good" | "bad";
 export type TurboState = "ready" | "loading" | "active";
 
-export interface UpgradeRow {
-  id: string;
-  icon: UpgradeIcon;
-  name: string;
-  description: string;
-  level: number;
-  max: number;
-  /** Price of the next level; null when maxed out. */
-  cost: number | null;
-}
-
-export interface UpgradePanel {
-  /** Identifies whose upgrades these are (workshop, or a robot or drone id). */
-  key: string;
-  title: string;
-  rows: UpgradeRow[];
-  /** On/off switch shown in the panel header, e.g. a drone's selling state. */
-  toggle?: { on: boolean; label: string };
-}
-
 export interface CoachCard {
   step: string;
   title: string;
@@ -52,12 +34,12 @@ export interface Hud {
   update(state: GameState): void;
   toast(message: string, tone?: ToastTone): void;
   setVisible(visible: boolean): void;
-  showPanel(panel: UpgradePanel | null, credits: number): void;
+  showPanel(panel: UpgradePanel | null): void;
   setTurbo(turbo: TurboState, secondsLeft: number): void;
   showCoach(card: CoachCard | null): void;
   showIntro(visible: boolean): void;
   setIntroCaption(text: string | null): void;
-  onBuy(handler: (key: string, id: string) => void): void;
+  onOrder(handler: (key: string, id: string) => void): void;
   onToggle(handler: (key: string) => void): void;
   onDrop(handler: (item: ItemId) => void): void;
   onTurbo(handler: () => void): void;
@@ -68,7 +50,9 @@ export interface Hud {
 
 export function createHud(): Hud {
   const root = requireElement<HTMLElement>("hud");
-  const credits = requireElement<HTMLElement>("credits");
+  const orderChip = requireElement<HTMLElement>("order-chip");
+  const orderTitle = requireElement<HTMLElement>("order-title");
+  const orderList = requireElement<HTMLElement>("order-list");
   const carry = requireElement<HTMLElement>("carry");
   const carryBar = requireElement<HTMLElement>("carry-bar");
   const inventory = requireElement<HTMLUListElement>("inventory");
@@ -78,9 +62,6 @@ export function createHud(): Hud {
   const objective = requireElement<HTMLElement>("objective");
   const objectiveStep = requireElement<HTMLElement>("objective-step");
   const toastRegion = requireElement<HTMLElement>("toast");
-  const panel = requireElement<HTMLElement>("workshop");
-  const panelTitle = requireElement<HTMLElement>("workshop-title");
-  const upgradeList = requireElement<HTMLElement>("upgrade-list");
   const turbo = requireElement<HTMLButtonElement>("turbo");
   const turboLabel = requireElement<HTMLElement>("turbo-label");
   const flashLayer = requireElement<HTMLElement>("flash");
@@ -88,18 +69,14 @@ export function createHud(): Hud {
   const coachOk = requireElement<HTMLButtonElement>("coach-ok");
   const intro = requireElement<HTMLElement>("intro");
   const introCaption = requireElement<HTMLElement>("intro-caption");
-  let buyHandler: (key: string, id: string) => void = () => undefined;
+  let orderHandler: (key: string, id: string) => void = () => undefined;
   let toggleHandler: (key: string) => void = () => undefined;
-  const panelToggle = requireElement<HTMLButtonElement>("panel-toggle");
-  const panelToggleLabel = requireElement<HTMLElement>("panel-toggle-label");
-  panelToggle.addEventListener("click", () => toggleHandler(panelKey));
+  const panelView = createPanelView((key, id) => orderHandler(key, id), (key) => toggleHandler(key));
   let dropHandler: (item: ItemId) => void = () => undefined;
   let toastTimer = 0;
-  let lastCredits = -1;
+  let orderSignature = "";
   let lastObjective = -1;
   let inventorySignature = "";
-  let panelSignature = "";
-  let panelKey = "";
 
   function renderInventory(state: GameState): void {
     const counts = carriedCounts(state.player.carry);
@@ -131,56 +108,44 @@ export function createHud(): Hud {
     );
   }
 
-  function renderPanel(next: UpgradePanel, money: number): void {
-    const signature = `${next.key}|${money}|${next.toggle?.on ?? "-"}|${next.rows.map((r) => `${r.level}:${r.cost}`).join(",")}`;
-    if (signature === panelSignature) return;
-    panelSignature = signature;
-    panelKey = next.key;
-    panelTitle.textContent = next.title;
-    panelToggle.hidden = !next.toggle;
-    if (next.toggle) {
-      panelToggle.setAttribute("aria-pressed", String(next.toggle.on));
-      panelToggle.setAttribute("aria-label", next.toggle.on ? "Drone is selling. Pause it" : "Drone is paused. Start selling");
-      panelToggleLabel.textContent = next.toggle.label;
-    }
-    upgradeList.replaceChildren(
-      ...next.rows.map((row) => {
-        const item = document.createElement("li");
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "upgrade";
-        // The icon markup is a fixed constant; every row-supplied string goes in through textContent.
-        button.innerHTML = `${upgradeIconSvg(row.icon)}<span class="upgrade-name"></span><span class="upgrade-desc"></span><span class="upgrade-pips" aria-hidden="true"></span><span class="upgrade-cost"></span>`;
-        (button.children[1] as HTMLElement).textContent = row.name;
-        (button.children[2] as HTMLElement).textContent = row.description;
-        (button.children[3] as HTMLElement).textContent = "●".repeat(row.level) + "○".repeat(row.max - row.level);
-        (button.children[4] as HTMLElement).textContent = row.cost === null ? "MAX" : `◆ ${row.cost}`;
-        button.disabled = row.cost === null || money < row.cost;
-        button.setAttribute("aria-label", `${row.name}, level ${row.level} of ${row.max}. ${row.cost === null ? "Maxed out" : `Costs ${row.cost} credits`}`);
-        button.addEventListener("click", () => buyHandler(panelKey, row.id));
-        item.append(button);
-        return item;
+  /** The active build in the top-left corner: its name and each material's count. */
+  function renderOrder(state: GameState): void {
+    const rows = orderProgress(state);
+    const title = state.order ? orderLabel(state, state.order) : "";
+    const signature = `${title}|${rows.map((r) => `${r.item}:${r.delivered}/${r.needed}`).join(",")}`;
+    if (signature === orderSignature) return;
+    orderSignature = signature;
+    orderChip.hidden = !state.order;
+    orderTitle.textContent = title;
+    orderList.replaceChildren(
+      ...rows.map(({ item, needed, delivered }) => {
+        const row = document.createElement("li");
+        row.classList.toggle("is-done", delivered >= needed);
+        const swatch = document.createElement("span");
+        swatch.className = `item-swatch item-swatch--${ITEMS[item].shape}`;
+        swatch.style.setProperty("--swatch", hex(ITEMS[item].color));
+        const name = document.createElement("span");
+        name.className = "item-name";
+        name.textContent = ITEMS[item].plural;
+        const count = document.createElement("span");
+        count.className = "item-count";
+        count.textContent = `${delivered}/${needed}`;
+        row.append(swatch, name, count);
+        row.setAttribute("aria-label", `${ITEMS[item].plural}: ${delivered} of ${needed}`);
+        return row;
       }),
     );
   }
 
   return {
     update(state) {
-      if (state.credits !== lastCredits) {
-        credits.textContent = state.credits.toLocaleString("en-US");
-        if (state.credits > lastCredits && lastCredits >= 0) {
-          credits.classList.remove("bump");
-          void credits.offsetWidth;
-          credits.classList.add("bump");
-        }
-        lastCredits = state.credits;
-      }
+      renderOrder(state);
       const capacity = carryCapacity(state);
       carry.textContent = `${state.player.carry.length}/${capacity}`;
       carryBar.style.transform = `scaleX(${state.player.carry.length / capacity})`;
       carry.closest(".chip")?.classList.toggle("is-full", state.player.carry.length >= capacity);
       renderInventory(state);
-      const max = oxygenFor(state.upgrades.oxygen);
+      const max = oxygenFor(state.suit.oxygen);
       oxygen.textContent = `${Math.ceil(state.player.oxygen)} s`;
       oxygenBar.style.transform = `scaleX(${state.player.oxygen / max})`;
       oxygenBox.classList.toggle("is-low", state.player.oxygen <= max * OXYGEN.lowRatio);
@@ -209,10 +174,8 @@ export function createHud(): Hud {
     setVisible(visible) {
       root.hidden = !visible;
     },
-    showPanel(next, money) {
-      panel.hidden = next === null;
-      if (next) renderPanel(next, money);
-      else panelSignature = "";
+    showPanel(next) {
+      panelView.render(next);
     },
     setTurbo(mode, secondsLeft) {
       turbo.dataset.mode = mode;
@@ -255,8 +218,8 @@ export function createHud(): Hud {
       void introCaption.offsetWidth;
       introCaption.classList.add("is-new");
     },
-    onBuy(handler) {
-      buyHandler = handler;
+    onOrder(handler) {
+      orderHandler = handler;
     },
     onToggle(handler) {
       toggleHandler = handler;

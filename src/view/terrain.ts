@@ -66,13 +66,14 @@ function flatZones(planet: PlanetDef): FlatZone[] {
   if (cached) return cached;
   const zones: FlatZone[] = [
     { ...planet.dome, radius: planet.dome.radius + 0.8 },
-    { ...planet.sellPad, radius: 2 },
-    { ...planet.trader, radius: 2.2 },
-    { ...planet.workshop, radius: 2.6 },
+    { ...planet.suitStation, radius: 2.2 },
+    { ...planet.suitStation.pad, radius: 1.6 },
+    { ...planet.workbench, radius: 2.2 },
+    { ...planet.workbench.pad, radius: 1.6 },
     { x: planet.rocket.x, z: planet.rocket.z, radius: 3.2 },
     { ...planet.rocket.pad, radius: 1.9 },
-    ...planet.machines.flatMap((m) => [{ ...m, radius: 2.8 }, { ...m.inputPad, radius: 1.5 }, { ...m.outputPad, radius: 1.5 }, ...(m.secondInput ? [{ ...m.secondInput.pad, radius: 1.5 }] : [])]),
-    ...planet.unlocks.map((u) => ({ ...u, radius: 1.9 })),
+    ...planet.machines.flatMap((m) => [{ ...m, radius: 2.8 }, { ...m.inputPad, radius: 1.5 }, { ...m.outputPad, radius: 1.5 }]),
+    ...planet.builds.flatMap((b) => [{ ...b, radius: 1.9 }, { ...b.site, radius: 1.6 }]),
   ];
   flatZoneCache.set(planet, zones);
   return zones;

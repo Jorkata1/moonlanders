@@ -1,4 +1,4 @@
-import type { ItemId, UpgradeId } from "../config";
+import type { ItemId, MaterialCost, SuitUpgradeId } from "../config";
 
 export interface Point {
   readonly x: number;
@@ -8,52 +8,73 @@ export interface Point {
 export interface DepositDef extends Point {
   readonly id: string;
   readonly item: ItemId;
-  /** Unlock that makes this deposit reachable; null when available from the start. */
+  /** Build (or "wall") that makes this field reachable; null when available from the start. */
   readonly zone: string | null;
+  /** Not on the map at all until its zone is available; then it falls in from the sky. */
+  readonly hidden?: boolean;
 }
 
-export type MachineModelId = "smelter" | "purifier" | "wireMill" | "fuelSynth" | "engineWorks";
+export type MachineModelId = "smelter" | "refinery";
+
+/** What a machine can hold and how fast it works at one level. */
+export interface MachineLevel {
+  readonly inputCapacity: number;
+  readonly outputCapacity: number;
+  readonly secondsPerItem: number;
+}
 
 export interface MachineDef extends Point {
   readonly id: string;
   readonly name: string;
   readonly model: MachineModelId;
   readonly input: ItemId;
-  /** Assemblers need one of each input per item; robots only ever feed the first input. */
-  readonly secondInput?: { readonly item: ItemId; readonly pad: Point };
+  /** Input consumed per finished item (2 Helium X make one helium cell). */
+  readonly inputPerItem: number;
   readonly output: ItemId;
-  readonly secondsPerItem: number;
+  /** Level 1 first; each built machine upgrade moves it up one level. */
+  readonly levels: readonly MachineLevel[];
   readonly inputPad: Point;
   readonly outputPad: Point;
 }
 
-export type UnlockKind = "machine" | "workshop" | "path" | "robot" | "drone";
+export type BuildKind = "workbench" | "machine" | "machineUpgrade" | "robot" | "drone" | "drill" | "jumpDrive";
 
-export interface UnlockDef extends Point {
+/**
+ * Anything made at the workbench. `x, z` is where it stands; `site` is where its hologram
+ * collects materials (in front of it, so you can reach it).
+ */
+export interface BuildDef extends Point {
   readonly id: string;
   readonly label: string;
-  readonly kind: UnlockKind;
-  readonly cost: number;
-  /** All of these must be unlocked before this pad appears. */
+  readonly description: string;
+  readonly kind: BuildKind;
+  readonly cost: MaterialCost;
+  /** All of these must be built before this one can be ordered. */
   readonly requires: readonly string[];
-  /** Machine id for machine, robot and drone unlocks (a drone sells that machine's output). */
+  readonly site: Point;
+  /** Machine built, upgraded or served (robots feed it, the drone unloads it). */
   readonly machineId?: string;
+  /** What a robot mines. */
+  readonly item?: ItemId;
 }
 
 export type ObjectiveCheck =
   | { kind: "mined"; item: ItemId; count: number }
-  | { kind: "earned"; credits: number }
-  | { kind: "unlocked"; id: string }
+  | { kind: "built"; id: string }
+  | { kind: "builtAny"; ids: readonly string[] }
   | { kind: "processed"; machineId: string; count: number }
-  | { kind: "carrying"; item: ItemId }
-  | { kind: "upgraded"; id: UpgradeId }
-  | { kind: "rocketComplete" }
+  | { kind: "suitUpgraded"; id: SuitUpgradeId }
   | { kind: "launched" };
 
 export interface ObjectiveDef {
   readonly text: string;
   readonly target: Point;
   readonly check: ObjectiveCheck;
+}
+
+/** A building you stand in front of to use: `pad` is where the panel opens. */
+export interface StationDef extends Point {
+  readonly pad: Point;
 }
 
 export interface PlanetPalette {
@@ -106,24 +127,25 @@ export interface PlanetDef {
   readonly phrase: string;
   readonly palette: PlanetPalette;
   readonly bounds: { readonly minX: number; readonly maxX: number; readonly minZ: number; readonly maxZ: number };
-  /** Ridge that blocks the way north until the path unlock is bought. */
-  readonly ridge: { readonly z: number; readonly gapHalfWidth: number; readonly unlockId: string };
+  /** Ridge that blocks the way north until `openId` is in the built set (the drill bores it open). */
+  readonly ridge: { readonly z: number; readonly gapHalfWidth: number; readonly openId: string };
   readonly dome: Point & { readonly radius: number };
   readonly spawn: Point;
-  readonly sellPad: Point;
-  /** The trader's stall, just behind the trade pad. */
-  readonly trader: Point;
-  readonly workshop: Point;
-  readonly rocket: Point & { readonly pad: Point; readonly parts: Readonly<Partial<Record<ItemId, number>>> };
+  /** Where your escape pod lands, inside the dome. */
+  readonly podSpot: Point;
+  readonly suitStation: StationDef;
+  /** The workbench; its own build is the first order of the game. */
+  readonly workbench: StationDef;
+  readonly rocket: Point & { readonly pad: Point };
   readonly deposits: readonly DepositDef[];
   readonly machines: readonly MachineDef[];
-  readonly unlocks: readonly UnlockDef[];
+  readonly builds: readonly BuildDef[];
   readonly objectives: readonly ObjectiveDef[];
-  /** Dust storms start once this unlock is bought. */
+  /** Dust storms start once this build exists. */
   readonly storms: { readonly after: string } | null;
   readonly scenery: SceneryDef;
   readonly route: RouteCardDef;
-  /** Captions for the pod-landing cinematic when the player arrives. */
+  /** Captions for the opening cinematic. */
   readonly arrivalCaptions: readonly string[];
   /** Which ambient soundtrack plays here. */
   readonly music: "moon" | "mars";

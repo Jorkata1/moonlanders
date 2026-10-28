@@ -1,4 +1,4 @@
-#workshop { position: absolute; left: var(--gutter-left); bottom: var(--bottom); width: min(340px, calc(100% - 32px)); padding: 12px; pointer-events: auto; animation: panel-in 250ms ease-out; }
+#workshop { position: absolute; left: var(--gutter-left); bottom: var(--bottom); width: min(360px, calc(100% - 32px)); max-height: calc(100% - var(--top) - var(--bottom) - 220px); overflow-y: auto; padding: 12px; pointer-events: auto; animation: panel-in 250ms ease-out; }
 .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .panel-toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(93, 242, 160, 0.5); background: rgba(93, 242, 160, 0.12); color: var(--mint); font: 700 13px var(--font-display); letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; transition: background-color 150ms ease-out, border-color 150ms ease-out, transform 150ms ease-out; }
 .panel-toggle:hover { background: rgba(93, 242, 160, 0.2); }
@@ -7,15 +7,20 @@
 .toggle-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; }
 #workshop h2 { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 18px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--cyan); }
 #upgrade-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
-.upgrade { width: 100%; display: grid; grid-template-columns: auto 1fr auto; gap: 0 12px; padding: 8px 12px; text-align: left; border-radius: 12px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.04); color: var(--text); font: inherit; cursor: pointer; transition: border-color 150ms ease-out, background-color 150ms ease-out, transform 150ms ease-out, opacity 150ms ease-out; }
+.upgrade { width: 100%; display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; padding: 8px 12px; text-align: left; border-radius: 12px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.04); color: var(--text); font: inherit; cursor: pointer; transition: border-color 150ms ease-out, background-color 150ms ease-out, transform 150ms ease-out, opacity 150ms ease-out; }
 .upgrade:hover:not(:disabled) { border-color: var(--cyan); background: rgba(77, 227, 255, 0.08); }
 .upgrade:active:not(:disabled) { transform: scale(0.98); }
 .upgrade:disabled { opacity: 0.55; cursor: not-allowed; }
-.upgrade-icon { grid-column: 1; grid-row: 1 / span 3; align-self: center; width: 24px; height: 24px; fill: none; stroke: var(--cyan); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.upgrade-icon { grid-column: 1; grid-row: 1 / span 2; align-self: center; width: 24px; height: 24px; fill: none; stroke: var(--cyan); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .upgrade-name { grid-column: 2; font-weight: 700; }
 .upgrade-desc { grid-column: 2; font-size: 13px; color: var(--muted); }
 .upgrade-pips { grid-column: 2; font-size: 12px; letter-spacing: 0.2em; color: var(--cyan); }
-.upgrade-cost { grid-column: 3; grid-row: 1 / span 3; align-self: center; font-family: var(--font-display); font-weight: 700; font-size: 18px; color: var(--gold); font-variant-numeric: tabular-nums; }
+.upgrade-costs { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.cost-chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.07); font-family: var(--font-display); font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums; }
+.upgrade-note { grid-column: 1 / -1; font-size: 12px; font-weight: 700; color: var(--gold); }
+.upgrade[data-state="active"]:disabled { opacity: 1; cursor: default; border-color: rgba(93, 242, 160, 0.6); background: rgba(93, 242, 160, 0.08); }
+.upgrade[data-state="active"] .upgrade-note { color: var(--mint); }
+.upgrade[data-state="locked"] .upgrade-note, .upgrade[data-state="maxed"] .upgrade-note { color: var(--muted); }
 
 .coach { position: absolute; left: 50%; bottom: calc(var(--bottom) + 8px); transform: translateX(-50%); width: min(440px, calc(100% - 2 * 200px)); min-width: 260px; padding: 12px 16px; pointer-events: auto; border-color: rgba(93, 242, 160, 0.45); box-shadow: 0 0 32px rgba(93, 242, 160, 0.12); }
 .coach.is-new { animation: coach-in 300ms ease-out; }

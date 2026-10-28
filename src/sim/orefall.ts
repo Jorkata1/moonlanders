@@ -2,9 +2,9 @@ import { DEPOSIT, ORE_FALL, PLAYER } from "../config";
 import type { PlanetDef, Point } from "../planets/types";
 import type { Emit } from "./events";
 import type { Random } from "./hazards";
-import { distance, fieldKey, type DepositState, type GameState } from "./state";
+import { distance, fieldKey, isAvailable, type DepositState, type GameState } from "./state";
 
-/** A patch of ground that ore keeps falling into; derived from the planet's starting deposits. */
+/** A patch of ground that material keeps falling into; derived from the planet's starting deposits. */
 export interface OreField extends Point {
   readonly id: string;
   readonly item: DepositState["item"];
@@ -69,6 +69,8 @@ export function updateOreFields(state: GameState, dt: number, emit: Emit, random
   state.falls = state.falls.filter((f) => f.timer > 0);
 
   for (const field of oreFields(state.planet)) {
+    // Hidden fields (iron before the smelter) only start falling in once they are reachable.
+    if (!isAvailable(state, field.zone)) continue;
     const standing = state.deposits.filter((d) => d.field === field.id && d.amount > 0).length + state.falls.filter((f) => f.field === field.id).length;
     if (standing >= field.capacity) {
       state.fallTimers[field.id] = Math.max(state.fallTimers[field.id] ?? 0, ORE_FALL.minIntervalSeconds);

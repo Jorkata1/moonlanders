@@ -1,12 +1,14 @@
-import { MARS } from "./mars";
 import { MOON } from "./moon";
 import type { PlanetDef, RouteCardDef } from "./types";
 
 /** Playable planets in travel order. */
-export const PLANETS: readonly PlanetDef[] = [MOON, MARS];
+export const PLANETS: readonly PlanetDef[] = [MOON];
 
 /** Planets announced on the start screen but not playable yet. */
-export const UPCOMING: readonly RouteCardDef[] = [{ label: "Ice moon", resources: "Coming soon", dot: ["#c8f0ff", "#5a6fd0"] }];
+export const UPCOMING: readonly RouteCardDef[] = [
+  { label: "Mars", resources: "Coming soon", dot: ["#ff9b6a", "#8a3a22"] },
+  { label: "Ice moon", resources: "Coming soon", dot: ["#c8f0ff", "#5a6fd0"] },
+];
 
 export function planetById(id: unknown): PlanetDef | null {
   return PLANETS.find((planet) => planet.id === id) ?? null;

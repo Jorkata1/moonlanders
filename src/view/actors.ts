@@ -1,12 +1,12 @@
-import { AdditiveBlending, CylinderGeometry, Mesh, MeshBasicMaterial, PointLight, Sprite, SpriteMaterial, Vector3, type Scene } from "three";
-import { ITEMS, robotCapacityFor, type ItemId } from "../config";
+import { Vector3, type Scene } from "three";
+import { ITEMS, PLAYER, robotCapacityFor, type ItemId } from "../config";
+import { createBeam, type Beam } from "./beam";
 import type { PlanetDef } from "../planets/types";
 import type { GameState, RobotState } from "../sim/state";
 import { astronautModel, robotModel, type AstronautModel, type LaserDrill, type RobotModel } from "./characters";
 import type { Effects } from "./fx";
 import { StackView, type ItemPool } from "./items";
 import { heightAt } from "./terrain";
-import { canvasTexture } from "./textures";
 import { chipColor } from "./deposits";
 
 const STRIDE_SPEED = 11;
@@ -14,67 +14,14 @@ const TURN_SMOOTHING = 14;
 const ASTRONAUT_SCALE = 1.2;
 const SPARK_INTERVAL = 0.06;
 const CHIP_INTERVAL = 0.22;
-const ROBOT_ACCENTS: Record<string, number> = { "robot-smelter": 0xff8a2a, "robot-purifier": 0x2fb7c9, "robot-wire": 0x3fd1a0, "robot-fuel": 0x8cf06a };
+/** The drill arm only rises when the rock is within about 70° of where the astronaut faces. */
+const ROCK_AHEAD_COS = 0.35;
+/** Accent colour of each robot, matching what it mines. */
+const ROBOT_ACCENTS: Record<string, number> = { "robot-iron": 0xff8a2a, "robot-carbon": 0x6f8cff, "robot-clay": 0xd8b07a };
 
 function turnToward(current: number, target: number, amount: number): number {
   const delta = Math.atan2(Math.sin(target - current), Math.cos(target - current));
   return current + delta * Math.min(1, amount);
-}
-
-function glowSpriteMap() {
-  return canvasTexture("beam-glow", 64, 64, (ctx) => {
-    const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-    gradient.addColorStop(0, "rgba(255, 255, 255, 1)");
-    gradient.addColorStop(0.25, "rgba(255, 200, 120, 0.8)");
-    gradient.addColorStop(1, "rgba(255, 120, 40, 0)");
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 64, 64);
-  });
-}
-
-/** A short cutting beam from a drill tip to the rock, with a hot spot and a flickering light. */
-export interface Beam {
-  show(from: Vector3, to: Vector3, time: number, strength: number): void;
-  hide(): void;
-}
-
-export function createBeam(scene: Scene, withLight: boolean): Beam {
-  const core = new Mesh(new CylinderGeometry(0.018, 0.018, 1, 6), new MeshBasicMaterial({ color: 0xfff1d0 }));
-  const halo = new Mesh(new CylinderGeometry(0.07, 0.05, 1, 10, 1, true), new MeshBasicMaterial({ color: 0xff7a2a, transparent: true, opacity: 0.45, blending: AdditiveBlending, depthWrite: false }));
-  const hotspot = new Sprite(new SpriteMaterial({ map: glowSpriteMap(), transparent: true, blending: AdditiveBlending, depthWrite: false }));
-  const light = withLight ? new PointLight(0xff8a3a, 0, 3, 2) : null;
-  for (const object of [core, halo, hotspot]) {
-    object.visible = false;
-    scene.add(object);
-  }
-  if (light) scene.add(light);
-  const mid = new Vector3();
-  return {
-    show(from, to, time, strength) {
-      const length = from.distanceTo(to);
-      mid.copy(from).lerp(to, 0.5);
-      for (const piece of [core, halo]) {
-        piece.visible = true;
-        piece.position.copy(mid);
-        piece.scale.set(1 + Math.sin(time * 60) * 0.25 * strength, length, 1 + Math.sin(time * 60) * 0.25 * strength);
-        piece.lookAt(to);
-        piece.rotateX(Math.PI / 2);
-      }
-      hotspot.visible = true;
-      hotspot.position.copy(to);
-      hotspot.scale.setScalar((0.45 + Math.sin(time * 45) * 0.12) * strength);
-      if (light) {
-        light.position.copy(to).add(new Vector3(0, 0.25, 0));
-        light.intensity = (2.5 + Math.sin(time * 37) * 0.8) * strength;
-      }
-    },
-    hide() {
-      core.visible = false;
-      halo.visible = false;
-      hotspot.visible = false;
-      if (light) light.intensity = 0;
-    },
-  };
 }
 
 /** Point on the rock's surface facing the miner, a little above the ground. */
@@ -112,13 +59,17 @@ export function createPlayerView(scene: Scene, pool: ItemPool, fx: Effects): Pla
   let chipTimer = 0;
   let dustTimer = 0;
   const tip = new Vector3();
+  const aim = new Vector3();
 
   return {
     model,
     stack,
     sync(state, dt, time) {
       const { player, planet } = state;
-      heading = turnToward(heading, player.heading, dt * TURN_SMOOTHING);
+      const deposit = player.miningTarget ? state.deposits.find((d) => d.id === player.miningTarget) : undefined;
+      // Standing still at a rock, the astronaut turns to face it so the drill points at it.
+      const facing = deposit && !player.moving ? Math.atan2(deposit.x - player.x, deposit.z - player.z) : player.heading;
+      heading = turnToward(heading, facing, dt * TURN_SMOOTHING);
       const ground = heightAt(planet, player.x, player.z);
       model.root.position.set(player.x, ground, player.z);
       model.root.rotation.y = heading;
@@ -126,9 +77,9 @@ export function createPlayerView(scene: Scene, pool: ItemPool, fx: Effects): Pla
       model.legs[0].rotation.x = stride * 0.7;
       model.legs[1].rotation.x = -stride * 0.7;
       model.arms[0].rotation.x = -stride * 0.6;
-      const deposit = player.miningTarget ? state.deposits.find((d) => d.id === player.miningTarget) : undefined;
-      // Aim the drill arm at the rock while mining.
-      model.arms[1].rotation.x += ((deposit ? -1.35 : stride * 0.6) - model.arms[1].rotation.x) * Math.min(1, dt * 14);
+      // Aim the drill arm at the rock while mining; walking away from it, the drill fires from the hip.
+      const rockAhead = deposit !== undefined && Math.cos(heading - Math.atan2(deposit.x - player.x, deposit.z - player.z)) > ROCK_AHEAD_COS;
+      model.arms[1].rotation.x += ((rockAhead ? -1.35 : stride * 0.6) - model.arms[1].rotation.x) * Math.min(1, dt * 14);
       model.body.position.y = player.moving ? Math.abs(stride) * 0.05 : Math.sin(time * 2) * 0.012;
       fall += ((player.stunned > 0 ? 1 : 0) - fall) * Math.min(1, dt * 10);
       model.body.rotation.x = -fall * 1.25;
@@ -141,20 +92,28 @@ export function createPlayerView(scene: Scene, pool: ItemPool, fx: Effects): Pla
       if (deposit) {
         model.root.updateMatrixWorld(true);
         model.drill.tip.getWorldPosition(tip);
+        model.drill.root.getWorldPosition(aim);
         const hit = rockSurfacePoint(planet, deposit, player);
-        beam.show(tip, hit, time, 1);
+        const power = Math.min(1, player.warmup / PLAYER.warmupSeconds);
+        beam.show(tip, hit, time, dt, power, aim.subVectors(tip, aim));
         sparkTimer -= dt;
         chipTimer -= dt;
-        if (sparkTimer <= 0) {
+        // While warming up, only a few blue sparks; the chips fly once it cuts.
+        if (power < 1) {
+          if (sparkTimer <= 0) {
+            sparkTimer = SPARK_INTERVAL * 3;
+            fx.sparks(hit, 0x9ff4ff, 1);
+          }
+        } else if (sparkTimer <= 0) {
           sparkTimer = SPARK_INTERVAL;
           fx.sparks(hit, 0xffb060, 3);
         }
-        if (chipTimer <= 0) {
+        if (power >= 1 && chipTimer <= 0) {
           chipTimer = CHIP_INTERVAL;
           fx.chips(hit, ITEMS[deposit.item].color, chipColor(deposit.item), 2);
         }
       } else {
-        beam.hide();
+        beam.hide(dt);
       }
 
       dustTimer -= dt;
@@ -188,11 +147,6 @@ export function createRobotsView(scene: Scene, pool: ItemPool, planet: PlanetDef
   const views = new Map<string, RobotView>();
   const tip = new Vector3();
 
-  function inputItem(robot: RobotState): ItemId {
-    const machine = planet.machines.find((m) => m.id === robot.machineId);
-    if (!machine) throw new Error(`Robot ${robot.id} serves unknown machine ${robot.machineId}`);
-    return machine.input;
-  }
 
   function create(robot: RobotState): RobotView {
     const model = robotModel(ROBOT_ACCENTS[robot.id] ?? 0x4de3ff);
@@ -205,7 +159,7 @@ export function createRobotsView(scene: Scene, pool: ItemPool, planet: PlanetDef
       for (const robot of state.robots) {
         const view = views.get(robot.id) ?? create(robot);
         views.set(robot.id, view);
-        const levels = state.robotUpgrades[robot.id] ?? { speed: 0, capacity: 0, mining: 0 };
+        const stage = state.stages[robot.id] ?? 0;
         const moved = Math.hypot(robot.x - view.lastX, robot.z - view.lastZ);
         view.lastX = robot.x;
         view.lastZ = robot.z;
@@ -216,10 +170,10 @@ export function createRobotsView(scene: Scene, pool: ItemPool, planet: PlanetDef
         for (const wheel of model.wheels) wheel.rotation.x += moved / 0.15;
         model.chassis.position.y = moved > 0 ? Math.sin(time * 30) * 0.01 : 0;
         model.head.rotation.y = Math.sin(time * 0.8 + robot.x) * 0.6;
-        model.bin.scale.set(1 + levels.capacity * 0.12, 1 + levels.capacity * 0.15, 1 + levels.capacity * 0.08);
-        model.thrusters.emissiveIntensity = 0.4 + levels.speed * 1.1 + (moved > 0 ? 0.8 : 0);
-        const capacity = robotCapacityFor(levels.capacity);
-        view.stack.sync(new Array<ItemId>(Math.min(robot.carry, capacity)).fill(inputItem(robot)), time, 0.2);
+        // Each stage shows: a bigger bin and brighter thrusters.
+        model.bin.scale.set(1 + stage * 0.12, 1 + stage * 0.15, 1 + stage * 0.08);
+        model.thrusters.emissiveIntensity = 0.4 + stage * 1.1 + (moved > 0 ? 0.8 : 0);
+        view.stack.sync(new Array<ItemId>(Math.min(robot.carry, robotCapacityFor(stage))).fill(robot.item), time, 0.2);
 
         const mining = robot.phase === "mining" && robot.depositId !== null;
         const deposit = mining ? state.deposits.find((d) => d.id === robot.depositId) : undefined;
@@ -229,14 +183,14 @@ export function createRobotsView(scene: Scene, pool: ItemPool, planet: PlanetDef
           model.root.updateMatrixWorld(true);
           model.drill.tip.getWorldPosition(tip);
           const hit = rockSurfacePoint(planet, deposit, robot);
-          view.beam.show(tip, hit, time, 0.7 + levels.mining * 0.15);
+          view.beam.show(tip, hit, time, dt, 1);
           view.sparkTimer -= dt;
           if (view.sparkTimer <= 0) {
             view.sparkTimer = 0.12;
             fx.sparks(hit, 0xffb060, 2);
           }
         } else {
-          view.beam.hide();
+          view.beam.hide(dt);
         }
       }
     },

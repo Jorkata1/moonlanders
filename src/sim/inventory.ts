@@ -1,7 +1,7 @@
-import { PILE, PLAYER, ROBOT_UPGRADES, type ItemId, type RobotUpgradeId } from "../config";
+import { PILE, PLAYER, type ItemId } from "../config";
 import { carryCapacity } from "./economy";
 import type { Emit } from "./events";
-import { distance, type GameState, type PileState } from "./state";
+import { buildDef, distance, stockpileSpot, type GameState, type PileState } from "./state";
 
 /** Count of each item type in the backpack, in the order they were first picked up. */
 export function carriedCounts(carry: readonly ItemId[]): Array<{ item: ItemId; count: number }> {
@@ -36,6 +36,27 @@ export function dropItems(state: GameState, item: ItemId, amount: number, emit: 
   return { ok: true };
 }
 
+/** Standing on a robot's stockpile fills the backpack from it, one item per transfer tick. */
+function pickFromStockpiles(state: GameState, dt: number, emit: Emit): void {
+  const player = state.player;
+  const robotId = Object.keys(state.stockpiles).find((id) => {
+    const build = buildDef(state.planet, id);
+    return build !== undefined && state.built.has(id) && (state.stockpiles[id] ?? 0) > 0 && distance(player, stockpileSpot(build)) <= PILE.pickupRadius;
+  });
+  const build = robotId ? buildDef(state.planet, robotId) : undefined;
+  if (!robotId || !build?.item) {
+    player.stockpileTimer = 0;
+    return;
+  }
+  player.stockpileTimer += dt;
+  while (player.stockpileTimer >= PLAYER.transferInterval && (state.stockpiles[robotId] ?? 0) > 0 && player.carry.length < carryCapacity(state)) {
+    player.stockpileTimer -= PLAYER.transferInterval;
+    state.stockpiles[robotId] = (state.stockpiles[robotId] ?? 0) - 1;
+    player.carry.push(build.item);
+    emit({ type: "pickedUp", item: build.item, from: stockpileSpot(build) });
+  }
+}
+
 /** Walking over a pile picks it back up, one item per transfer tick. */
 export function updatePiles(state: GameState, dt: number, emit: Emit): void {
   const player = state.player;
@@ -44,6 +65,7 @@ export function updatePiles(state: GameState, dt: number, emit: Emit): void {
     if (pile.held && d > PILE.releaseRadius) pile.held = false;
   }
   if (player.stunned > 0) return;
+  pickFromStockpiles(state, dt, emit);
   const pile = state.piles.find((p) => !p.held && distance(player, p) <= PILE.pickupRadius);
   if (!pile) return;
   pile.pickupTimer = (pile.pickupTimer ?? 0) + dt;
@@ -54,18 +76,4 @@ export function updatePiles(state: GameState, dt: number, emit: Emit): void {
     emit({ type: "pickedUp", item, from: pile });
   }
   state.piles = state.piles.filter((p) => p.items.length > 0);
-}
-
-export type UpgradeResult = { ok: true } | { ok: false; reason: string };
-
-export function buyRobotUpgrade(state: GameState, robotId: string, id: RobotUpgradeId, emit: Emit): UpgradeResult {
-  const levels = state.robotUpgrades[robotId];
-  if (!levels || !state.unlocked.has(robotId)) return { ok: false, reason: "Hire this robot first" };
-  const cost = ROBOT_UPGRADES[id].costs[levels[id]];
-  if (cost === undefined) return { ok: false, reason: "Already at max level" };
-  if (state.credits < cost) return { ok: false, reason: `Needs ${cost - state.credits} more credits` };
-  state.credits -= cost;
-  levels[id] += 1;
-  emit({ type: "robotUpgraded", robotId, id, level: levels[id] });
-  return { ok: true };
 }

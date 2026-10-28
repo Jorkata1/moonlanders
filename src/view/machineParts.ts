@@ -25,12 +25,9 @@ export interface BaseRig {
 export interface MachineModel {
   root: Group;
   inputTray: Group;
-  /** Hopper for the second input, on machines that take two. */
-  secondTray?: Group;
   outputTray: Group;
   /** Route an item rides from the input belt's foot into the hopper, in the model's local space. */
   inputPath: readonly Vector3[];
-  secondPath?: readonly Vector3[];
   /** Route a finished item takes from inside the machine down the chute to the output tray. */
   outputPath: readonly Vector3[];
   rig: BaseRig;
@@ -139,21 +136,18 @@ export function base(root: Group): BaseRig {
   };
 }
 
-/**
- * Belt from the input pad up into the hopper, and the hopper itself.
- * `side` 1 faces the front-left pad, -1 the back-left pad of two-input machines.
- */
-export function intake(root: Group, belt: MeshStandardMaterial, side: 1 | -1 = 1): Feed {
-  const hopperZ = side === 1 ? 0.05 : -0.8;
-  const beltZ = side === 1 ? 0.75 : -1.4;
-  const legs = side === 1 ? [1.25, 0.45] : [-1.9, -1.1];
+/** Belt from the input pad up into the hopper, and the hopper itself. */
+export function intake(root: Group, belt: MeshStandardMaterial): Feed {
+  const hopperZ = 0.05;
+  const beltZ = 0.75;
+  const legs = [1.25, 0.45];
   const conveyor = new Group();
   conveyor.add(box(0.5, 0.06, 1.4, belt, 0, 0, 0, 0.01));
   conveyor.add(box(0.06, 0.14, 1.4, LOOK.steel(), -0.28, 0.03, 0, 0.02));
   conveyor.add(box(0.06, 0.14, 1.4, LOOK.steel(), 0.28, 0.03, 0, 0.02));
   for (const z of [-0.66, 0.66]) conveyor.add(mesh(new CylinderGeometry(0.06, 0.06, 0.52, 10), LOOK.steel(), 0, -0.02, z).rotateZ(Math.PI / 2));
   conveyor.position.set(-1.35, BELT_HEIGHT, beltZ);
-  conveyor.rotation.x = BELT_TILT * side;
+  conveyor.rotation.x = BELT_TILT;
   root.add(conveyor);
   for (const z of legs) root.add(box(0.08, 0.7, 0.08, LOOK.steel(), -1.35, 0.35, z, 0.02));
   const funnelMaterial = LOOK.steel().clone();
@@ -167,7 +161,7 @@ export function intake(root: Group, belt: MeshStandardMaterial, side: 1 | -1 = 1
   tray.userData.dynamic = true;
   root.add(tray);
   const rise = Math.sin(BELT_TILT) * BELT_HALF_LENGTH;
-  const run = Math.cos(BELT_TILT) * BELT_HALF_LENGTH * side;
+  const run = Math.cos(BELT_TILT) * BELT_HALF_LENGTH;
   const path = [
     new Vector3(-1.35, BELT_HEIGHT - rise + 0.1, beltZ + run),
     new Vector3(-1.35, BELT_HEIGHT + rise + 0.1, beltZ - run),

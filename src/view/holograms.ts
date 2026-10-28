@@ -1,7 +1,7 @@
 import { AdditiveBlending, BoxGeometry, ConeGeometry, CylinderGeometry, Group, Mesh, MeshBasicMaterial, SphereGeometry, TorusGeometry } from "three";
 
 /** Shapes floating above a pad that say what it does. */
-export type HologramIcon = "coin" | "in" | "out" | "rocket" | "gear" | "wrench" | "path" | "robot" | "drone";
+export type HologramIcon = "coin" | "in" | "out" | "rocket" | "gear" | "wrench" | "path" | "robot" | "drone" | "suit" | "drill" | "build";
 
 const cache = new Map<number, MeshBasicMaterial>();
 
@@ -90,7 +90,36 @@ function drone(m: MeshBasicMaterial): Group {
   return group;
 }
 
+function suit(m: MeshBasicMaterial): Group {
+  const group = new Group();
+  group.add(part(new SphereGeometry(0.2, 16, 12), m, 0, 0.14, 0));
+  group.add(part(new TorusGeometry(0.13, 0.03, 6, 18), m, 0, 0.14, 0.15));
+  group.add(part(new BoxGeometry(0.34, 0.22, 0.16), m, 0, -0.16, 0));
+  return group;
+}
+
+function drill(m: MeshBasicMaterial): Group {
+  const group = new Group();
+  group.add(part(new CylinderGeometry(0.1, 0.1, 0.24, 12), m, 0, 0.16, 0));
+  const bit = part(new ConeGeometry(0.14, 0.34, 12), m, 0, -0.14, 0);
+  bit.rotation.x = Math.PI;
+  group.add(bit);
+  group.add(part(new TorusGeometry(0.16, 0.025, 6, 16), m, 0, 0.02, 0).rotateX(Math.PI / 2));
+  return group;
+}
+
+function build(m: MeshBasicMaterial): Group {
+  const group = new Group();
+  group.add(part(new BoxGeometry(0.22, 0.22, 0.22), m, -0.13, -0.12, 0));
+  group.add(part(new BoxGeometry(0.22, 0.22, 0.22), m, 0.13, -0.12, 0));
+  group.add(part(new BoxGeometry(0.22, 0.22, 0.22), m, 0, 0.13, 0));
+  return group;
+}
+
 const BUILDERS: Record<HologramIcon, (m: MeshBasicMaterial) => Group> = {
+  suit,
+  drill,
+  build,
   coin,
   in: (m) => arrow(m, false),
   out: (m) => arrow(m, true),

@@ -16,10 +16,8 @@ const state = createState(MOON);
 const tick = createBot(state);
 for (let t = 0; t < seconds; t += 1 / 30) tick(1 / 30);
 if (params.get("robots")) {
-  state.unlocked.add("robot-smelter");
-  state.unlocked.add("robot-purifier");
+  for (const id of ["workbench", "smelter", "robot-iron", "robot-carbon", "robot-clay"]) state.built.add(id);
   state.launched = false;
-  state.rocket.plate = 0;
   for (let t = 0; t < 25; t += 1 / 30) tick(1 / 30);
 }
 
@@ -37,7 +35,7 @@ const fx = createEffects(scene, pool);
 const player = createPlayerView(scene, pool, fx);
 const robots = createRobotsView(scene, pool, MOON, fx);
 const lander = landerModel();
-lander.root.position.copy(world.groundAt({ x: MOON.dome.x + 1.6, z: MOON.dome.z - 0.9 }));
+lander.root.position.copy(world.groundAt(MOON.podSpot));
 scene.add(lander.root);
 enableShadows(scene);
 pipeline.applyReflections(scene);
@@ -58,7 +56,7 @@ pipeline.resize(innerWidth, innerHeight);
   pipeline.renderer.info.reset();
   pipeline.render();
 };
-(window as unknown as { info: () => string }).info = () => JSON.stringify({ calls: pipeline.renderer.info.render.calls, triangles: pipeline.renderer.info.render.triangles, objects: (() => { let n = 0; scene.traverse(() => n++); return n; })(), unlocked: [...state.unlocked], credits: state.credits, player: [state.player.x.toFixed(1), state.player.z.toFixed(1)], carry: state.player.carry.length, robots: state.robots.length });
+(window as unknown as { info: () => string }).info = () => JSON.stringify({ calls: pipeline.renderer.info.render.calls, triangles: pipeline.renderer.info.render.triangles, objects: (() => { let n = 0; scene.traverse(() => n++); return n; })(), built: [...state.built], player: [state.player.x.toFixed(1), state.player.z.toFixed(1)], carry: state.player.carry.length, robots: state.robots.length });
 
 (window as unknown as { state: typeof state }).state = state;
 

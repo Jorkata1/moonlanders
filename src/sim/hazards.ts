@@ -15,12 +15,12 @@ function respawnInDome(state: GameState): void {
   player.x = planet.spawn.x;
   player.z = planet.spawn.z;
   player.carry = [];
-  player.oxygen = oxygenFor(state.upgrades.oxygen);
+  player.oxygen = oxygenFor(state.suit.oxygen);
 }
 
 export function updateOxygen(state: GameState, dt: number, emit: Emit): void {
   const player = state.player;
-  const max = oxygenFor(state.upgrades.oxygen);
+  const max = oxygenFor(state.suit.oxygen);
   if (isInsideDome(state, player)) {
     player.oxygen = Math.min(max, player.oxygen + OXYGEN.refillPerSecond * dt);
     return;
@@ -37,11 +37,11 @@ export function updateOxygen(state: GameState, dt: number, emit: Emit): void {
   player.stunned = OXYGEN.respawnSeconds;
 }
 
-/** Calm → warning → raging → calm. Storms only start once the planet's trigger unlock is bought. */
+/** Calm → warning → raging → calm. Storms only start once the planet's trigger build exists. */
 export function updateStorm(state: GameState, dt: number, emit: Emit, random: Random): void {
   const storms = state.planet.storms;
   const storm = state.storm;
-  if (!storms || !state.unlocked.has(storms.after)) {
+  if (!storms || !state.built.has(storms.after)) {
     storm.phase = "calm";
     storm.timer = STORM.firstDelaySeconds;
     return;

@@ -1,5 +1,5 @@
-import { DEPOSIT, DRONE_UPGRADE_IDS, ITEM_IDS, STORM, ROBOT_UPGRADE_IDS, UPGRADE_IDS, oxygenFor, type DroneUpgradeId, type ItemId, type RobotUpgradeId, type UpgradeId } from "../config";
-import type { PlanetDef, Point } from "../planets/types";
+import { DEPOSIT, ITEM_IDS, PILE, STORM, SUIT_UPGRADE_IDS, oxygenFor, type ItemId, type SuitUpgradeId } from "../config";
+import type { BuildDef, PlanetDef, Point } from "../planets/types";
 
 export interface PlayerState {
   x: number;
@@ -10,16 +10,22 @@ export interface PlayerState {
   oxygen: number;
   mineTimer: number;
   transferTimer: number;
+  /** Pace of taking items from a robot's stockpile. */
+  stockpileTimer: number;
   /** Seconds left lying on the ground after running out of air. */
   stunned: number;
   miningTarget: string | null;
+  /** Seconds the drill has been warming up; mining starts at PLAYER.warmupSeconds. */
+  warmup: number;
+  /** Seconds since the last rock was in reach; the drill cools down after a short grace. */
+  outOfReach: number;
 }
 
 export interface DepositState extends Point {
   readonly id: string;
   readonly item: ItemId;
   readonly zone: string | null;
-  /** The ore field this node belongs to; new nodes fall into the same field. */
+  /** The field this node belongs to; new nodes fall into the same field. */
   readonly field: string;
   amount: number;
   readonly maxAmount: number;
@@ -30,24 +36,28 @@ export interface DepositState extends Point {
 export interface MachineState {
   readonly id: string;
   input: number;
-  /** Stock of the machine's second input; always 0 for single-input machines. */
-  secondInput: number;
   output: number;
   /** 0..1 progress on the item being processed; null when idle. */
   progress: number | null;
   processed: number;
 }
 
-export type RobotPhase = "toDeposit" | "mining" | "toMachine" | "unloading";
+export type RobotPhase = "toDeposit" | "mining" | "toDropOff" | "unloading" | "toStockpile" | "loading" | "parked";
+
+/** Where a robot is carrying its load. */
+export type DropOff = "machine" | "order" | "stockpile";
 
 export interface RobotState {
   readonly id: string;
-  readonly machineId: string;
+  readonly item: ItemId;
+  /** Machine the robot feeds, or null for material robots that supply builds. */
+  readonly machineId: string | null;
   x: number;
   z: number;
   heading: number;
   carry: number;
   phase: RobotPhase;
+  dropOff: DropOff;
   depositId: string | null;
   timer: number;
 }
@@ -60,7 +70,7 @@ export interface PileState extends Point {
   pickupTimer?: number;
 }
 
-/** A chunk of ore on its way down from the sky. */
+/** A chunk of material on its way down from the sky. */
 export interface FallState extends Point {
   readonly id: number;
   readonly item: ItemId;
@@ -70,9 +80,10 @@ export interface FallState extends Point {
   timer: number;
 }
 
-export type DronePhase = "toMachine" | "loading" | "toTrader" | "selling" | "returning" | "parked";
+/** `restocking` takes leftover cargo back where it came from when the order no longer needs it. */
+export type DronePhase = "parked" | "toSource" | "loading" | "toOrder" | "unloading" | "restocking" | "returning";
 
-/** A trader drone that ferries a machine's output to the sell pad. */
+/** The cargo drone: carries plates from its machine, or a robot's stockpile, to the active order. */
 export interface DroneState {
   readonly id: string;
   readonly machineId: string;
@@ -80,10 +91,11 @@ export interface DroneState {
   z: number;
   heading: number;
   carry: number;
+  cargo: ItemId | null;
+  /** Robot whose stockpile it is fetching from, or null for the machine's output. */
+  source: string | null;
   phase: DronePhase;
   timer: number;
-  /** Fraction of a credit left over from haggled sales. */
-  cashRemainder: number;
 }
 
 export type StormPhase = "calm" | "warning" | "raging";
@@ -94,102 +106,117 @@ export interface StormState {
   timer: number;
 }
 
+export type OrderKind = "build" | "suit" | "stage";
+
+/** The one thing being built or upgraded right now; materials are delivered to its hologram. */
+export interface OrderState {
+  readonly kind: OrderKind;
+  /** Build id, suit upgrade id, or the robot/drone id being upgraded. */
+  readonly targetId: string;
+  delivered: Record<ItemId, number>;
+}
+
 export interface Stats {
   mined: Record<ItemId, number>;
-  earned: number;
 }
 
 export interface GameState {
   readonly planet: PlanetDef;
-  credits: number;
-  unlocked: Set<string>;
-  paid: Map<string, number>;
-  upgrades: Record<UpgradeId, number>;
+  /** Finished builds, plus "wall" once the drill has bored through the ridge. */
+  built: Set<string>;
+  order: OrderState | null;
+  suit: Record<SuitUpgradeId, number>;
+  /** Stage 0..3 of every robot and drone, keyed by its build id. */
+  stages: Record<string, number>;
+  /** Whether each robot and drone is switched on. */
+  enabled: Record<string, boolean>;
+  /** What each material robot has stacked beside its dock. */
+  stockpiles: Record<string, number>;
   player: PlayerState;
   deposits: DepositState[];
   machines: Map<string, MachineState>;
   robots: RobotState[];
-  /** Upgrade levels per robot, keyed by the robot's unlock id. */
-  robotUpgrades: Record<string, Record<RobotUpgradeId, number>>;
+  drones: DroneState[];
   piles: PileState[];
   nextPileId: number;
-  rocket: Record<ItemId, number>;
   falls: FallState[];
-  /** Seconds until each ore field may drop its next node. */
+  /** Seconds until each field may drop its next node. */
   fallTimers: Record<string, number>;
   nextFallId: number;
-  drones: DroneState[];
-  droneUpgrades: Record<string, Record<DroneUpgradeId, number>>;
-  /** Whether each trader drone is allowed to sell. */
-  droneEnabled: Record<string, boolean>;
+  /** 0..1 while the drill bores through the ridge; null before it is built. */
+  boring: number | null;
   storm: StormState;
   stats: Stats;
   objectiveIndex: number;
   boostSeconds: number;
-  /** Fractional credits owed to the pad being paid, so payments flow smoothly. */
-  payAccumulator: number;
   launched: boolean;
   time: number;
 }
 
-function zeroItems(): Record<ItemId, number> {
+export function zeroItems(): Record<ItemId, number> {
   return Object.fromEntries(ITEM_IDS.map((id) => [id, 0])) as Record<ItemId, number>;
 }
 
-function zeroUpgrades(): Record<UpgradeId, number> {
-  return Object.fromEntries(UPGRADE_IDS.map((id) => [id, 0])) as Record<UpgradeId, number>;
+function zeroSuit(): Record<SuitUpgradeId, number> {
+  return Object.fromEntries(SUIT_UPGRADE_IDS.map((id) => [id, 0])) as Record<SuitUpgradeId, number>;
 }
 
-export function zeroRobotUpgrades(): Record<RobotUpgradeId, number> {
-  return Object.fromEntries(ROBOT_UPGRADE_IDS.map((id) => [id, 0])) as Record<RobotUpgradeId, number>;
-}
-
-export function zeroDroneUpgrades(): Record<DroneUpgradeId, number> {
-  return Object.fromEntries(DRONE_UPGRADE_IDS.map((id) => [id, 0])) as Record<DroneUpgradeId, number>;
-}
-
-/** Deposits of the same item behind the same unlock form one field. */
+/** Fields are grouped by material and by what unlocks them. */
 export function fieldKey(item: ItemId, zone: string | null): string {
   return `${item}@${zone ?? "open"}`;
 }
 
+/** Robots and the drone are the builds that work on their own. */
+export function workerBuilds(planet: PlanetDef): BuildDef[] {
+  return planet.builds.filter((b) => b.kind === "robot" || b.kind === "drone");
+}
+
 export function createState(planet: PlanetDef): GameState {
+  const workers = workerBuilds(planet);
+  const materialRobots = workers.filter((b) => b.kind === "robot" && !b.machineId);
   return {
     planet,
-    credits: 0,
-    unlocked: new Set(),
-    paid: new Map(),
-    upgrades: zeroUpgrades(),
-    player: { x: planet.spawn.x, z: planet.spawn.z, heading: Math.PI, moving: false, carry: [], oxygen: oxygenFor(0), mineTimer: 0, transferTimer: 0, stunned: 0, miningTarget: null },
-    deposits: planet.deposits.map((d) => ({ ...d, field: fieldKey(d.item, d.zone), amount: DEPOSIT.amount, maxAmount: DEPOSIT.amount, rubble: 0 })),
-    machines: new Map(planet.machines.map((m) => [m.id, { id: m.id, input: 0, secondInput: 0, output: 0, progress: null, processed: 0 }])),
+    built: new Set(),
+    order: { kind: "build", targetId: "workbench", delivered: zeroItems() },
+    suit: zeroSuit(),
+    stages: Object.fromEntries(workers.map((b) => [b.id, 0])),
+    enabled: Object.fromEntries(workers.map((b) => [b.id, true])),
+    stockpiles: Object.fromEntries(materialRobots.map((b) => [b.id, 0])),
+    player: { x: planet.spawn.x, z: planet.spawn.z, heading: Math.PI, moving: false, carry: [], oxygen: oxygenFor(0), mineTimer: 0, transferTimer: 0, stockpileTimer: 0, stunned: 0, miningTarget: null, warmup: 0, outOfReach: 0 },
+    deposits: planet.deposits.filter((d) => !d.hidden).map((d) => ({ ...d, field: fieldKey(d.item, d.zone), amount: DEPOSIT.amount, maxAmount: DEPOSIT.amount, rubble: 0 })),
+    machines: new Map(planet.machines.map((m) => [m.id, { id: m.id, input: 0, output: 0, progress: null, processed: 0 }])),
     robots: [],
-    robotUpgrades: Object.fromEntries(planet.unlocks.filter((u) => u.kind === "robot").map((u) => [u.id, zeroRobotUpgrades()])),
+    drones: [],
     piles: [],
     nextPileId: 1,
-    rocket: zeroItems(),
     falls: [],
     fallTimers: {},
     nextFallId: 1,
-    drones: [],
-    droneUpgrades: Object.fromEntries(planet.unlocks.filter((u) => u.kind === "drone").map((u) => [u.id, zeroDroneUpgrades()])),
-    droneEnabled: Object.fromEntries(planet.unlocks.filter((u) => u.kind === "drone").map((u) => [u.id, true])),
+    boring: null,
     storm: { phase: "calm", timer: STORM.firstDelaySeconds },
-    stats: { mined: zeroItems(), earned: 0 },
+    stats: { mined: zeroItems() },
     objectiveIndex: 0,
     boostSeconds: 0,
-    payAccumulator: 0,
     launched: false,
     time: 0,
   };
 }
 
 export function isAvailable(state: GameState, zone: string | null): boolean {
-  return zone === null || state.unlocked.has(zone);
+  return zone === null || state.built.has(zone);
 }
 
 export function distance(a: Point, b: Point): number {
   return Math.hypot(a.x - b.x, a.z - b.z);
+}
+
+export function buildDef(planet: PlanetDef, id: string): BuildDef | undefined {
+  return planet.builds.find((b) => b.id === id);
+}
+
+/** Where a material robot stacks its haul. */
+export function stockpileSpot(build: BuildDef): Point {
+  return { x: build.x + PILE.stockpileOffset, z: build.z };
 }
 
 /** True while a dust storm is blowing; the player is only affected outside the dome. */
@@ -197,15 +224,16 @@ export function isStormRaging(state: GameState): boolean {
   return state.storm.phase === "raging";
 }
 
-/** The launch pad can be used: it is on the near side of the ridge, or the way through is open. */
-export function isRocketReachable(state: GameState): boolean {
-  return state.planet.rocket.pad.z > state.planet.ridge.z || state.unlocked.has(state.planet.ridge.unlockId);
+export function isRidgeOpen(state: GameState): boolean {
+  return state.built.has(state.planet.ridge.openId);
 }
 
-export function rocketComplete(state: GameState): boolean {
-  return Object.entries(state.planet.rocket.parts).every(([item, needed]) => state.rocket[item as ItemId] >= (needed ?? 0));
+/** The rocket can fly once the jump drive is built. */
+export function rocketReady(state: GameState): boolean {
+  return state.planet.builds.some((b) => b.kind === "jumpDrive" && state.built.has(b.id));
 }
 
-export function rocketNeeds(state: GameState, item: ItemId): number {
-  return Math.max(0, (state.planet.rocket.parts[item] ?? 0) - state.rocket[item]);
+/** Current level (1-based) of a machine: one more for each of its upgrades that is built. */
+export function machineLevel(state: GameState, machineId: string): number {
+  return 1 + state.planet.builds.filter((b) => b.kind === "machineUpgrade" && b.machineId === machineId && state.built.has(b.id)).length;
 }

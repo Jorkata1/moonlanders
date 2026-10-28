@@ -1,47 +1,106 @@
+/** Focused checks of the materials economy: backpack, orders, robots, the drone, the drill and the drill warm-up. */
+import { PLAYER, ROBOT } from "../src/config";
 import { MOON } from "../src/planets/moon";
-import { createState } from "../src/sim/state";
-import { dropItems, carriedCounts, buyRobotUpgrade } from "../src/sim/inventory";
-import { step } from "../src/sim/step";
-import { setDroneEnabled } from "../src/sim/drones";
+import { carriedCounts, dropItems } from "../src/sim/inventory";
 import { oreFields } from "../src/sim/orefall";
+import { orderNeeds, startBuild, startStageUpgrade, startSuitUpgrade } from "../src/sim/orders";
+import { setWorkerEnabled } from "../src/sim/robots";
+import { createState, isRidgeOpen, machineLevel, type GameState } from "../src/sim/state";
+import { step } from "../src/sim/step";
 
+const DT = 1 / 30;
+const run = (s: GameState, seconds: number, input = { x: 0, z: 0 }) => {
+  for (let t = 0; t < seconds; t += DT) step(s, input, DT);
+};
+const report = (name: string, ok: boolean, detail: unknown = "") => console.log(`${name}: ${JSON.stringify({ ok, detail })}`);
+
+// Backpack: drop a pile, don't re-pick it while standing on it, pick it up after walking away and back.
 const s = createState(MOON);
-s.player.carry = ["ironOre", "ironOre", "plate", "ironOre"];
-const events: string[] = [];
+s.player.carry = ["carbon", "carbon", "clay", "carbon"];
 console.log("counts", JSON.stringify(carriedCounts(s.player.carry)));
-console.log("drop", JSON.stringify(dropItems(s, "ironOre", 2, (e) => events.push(e.type))), JSON.stringify(s.player.carry), "piles", s.piles.length, s.piles[0]?.items);
-console.log("drop missing", JSON.stringify(dropItems(s, "water", 1, () => {})));
-// standing still: pile must not be picked back up
-for (let i = 0; i < 30; i++) step(s, { x: 0, z: 0 }, 1 / 30);
-console.log("after standing", s.player.carry.length, "pile", s.piles[0]?.items.length);
-// walk away then back over it
-for (let i = 0; i < 20; i++) step(s, { x: 0, z: -1 }, 1 / 30);
+dropItems(s, "carbon", 2, () => undefined);
+run(s, 1);
+const keptPile = s.piles.length === 1 && s.player.carry.length === 2;
+run(s, 0.7, { x: 0, z: -1 });
 const pile = s.piles[0]!;
-for (let i = 0; i < 120 && s.piles.length; i++) { const dx = pile.x - s.player.x, dz = pile.z - s.player.z, d = Math.hypot(dx, dz) || 1; step(s, d > 0.3 ? { x: dx / d, z: dz / d } : { x: 0, z: 0 }, 1 / 30); }
-console.log("after returning", JSON.stringify(s.player.carry), "piles", s.piles.length);
-s.credits = 500;
-console.log("robot upgrade locked:", JSON.stringify(buyRobotUpgrade(s, "robot-smelter", "speed", () => {})));
-s.unlocked.add("robot-smelter");
-console.log("robot upgrade:", JSON.stringify(buyRobotUpgrade(s, "robot-smelter", "speed", () => {})), s.robotUpgrades["robot-smelter"], s.credits);
+for (let i = 0; i < 120 && s.piles.length; i++) {
+  const dx = pile.x - s.player.x, dz = pile.z - s.player.z, d = Math.hypot(dx, dz) || 1;
+  step(s, d > 0.3 ? { x: dx / d, z: dz / d } : { x: 0, z: 0 }, DT);
+}
+report("drop and pick up", keptPile && s.piles.length === 0 && s.player.carry.length === 4);
 
-// Trader drone: sells smelter output to Zix while enabled, stops when paused.
+// Drill warm-up: nothing for 2 s at a rock, then mining starts.
+const w = createState(MOON);
+w.player.x = -7.2; w.player.z = -4.2;
+run(w, PLAYER.warmupSeconds - 0.2);
+const coldCount = w.player.carry.length;
+run(w, 1.5);
+report("drill warm-up", coldCount === 0 && w.player.carry.length > 0, { cold: coldCount, after: w.player.carry.length });
+
+// Orders: the workbench order completes when 20 carbon arrive, and only one order runs at a time.
+const o = createState(MOON);
+o.player.x = MOON.workbench.pad.x; o.player.z = MOON.workbench.pad.z;
+o.player.carry = new Array(6).fill("carbon");
+run(o, 1);
+const partial = orderNeeds(o, "carbon") === 14;
+o.order!.delivered.carbon = 19;
+o.player.carry = ["carbon", "clay"];
+run(o, 1);
+const busy = startBuild(o, "smelter", () => undefined);
+const second = startSuitUpgrade(o, "capacity", () => undefined);
+report("orders", partial && o.built.has("workbench") && busy.ok && !second.ok && o.player.carry.join() === "clay", second.ok ? "" : second.reason);
+
+// Material robots stockpile beside their dock, then carry to the order that needs their material.
+const r = createState(MOON);
+r.built.add("workbench"); r.built.add("smelter"); r.built.add("robot-carbon");
+r.order = null;
+run(r, 60);
+const stocked = r.stockpiles["robot-carbon"]!;
+startBuild(r, "robot-clay", () => undefined);
+r.order!.delivered.plate = 20;
+run(r, 90);
+report("robot stockpile and delivery", stocked > 0 && r.built.has("robot-clay"), { stocked, left: r.stockpiles["robot-carbon"] });
+
+// Switching a robot off parks it; nothing more is mined.
+setWorkerEnabled(r, "robot-carbon", false);
+run(r, 5);
+const parkedMined = r.stats.mined.carbon;
+run(r, 20);
+report("robot off", r.stats.mined.carbon === parkedMined && r.robots.find((x) => x.id === "robot-carbon")?.phase === "parked");
+
+// Cargo drone: flies smelter plates to the active order.
 const d = createState(MOON);
-d.unlocked.add("smelter");
-d.unlocked.add("drone-smelter");
-d.machines.get("smelter")!.output = 6;
-for (let i = 0; i < 30 * 40; i++) step(d, { x: 0, z: 0 }, 1 / 30);
-console.log("drone sold:", JSON.stringify({ ok: d.credits > 0 && d.machines.get("smelter")!.output === 0, credits: d.credits, phase: d.drones[0]?.phase }));
-setDroneEnabled(d, "drone-smelter", false);
-d.machines.get("smelter")!.output = 6;
-const before = d.credits;
-for (let i = 0; i < 30 * 20; i++) step(d, { x: 0, z: 0 }, 1 / 30);
-console.log("drone paused:", JSON.stringify({ ok: d.credits === before && d.machines.get("smelter")!.output === 6, phase: d.drones[0]?.phase }));
+for (const id of ["workbench", "smelter", "robot-iron", "drone"]) d.built.add(id);
+d.order = null;
+d.machines.get("smelter")!.output = 45;
+startBuild(d, "smelter-2", () => undefined);
+d.order!.delivered.carbon = 90; d.order!.delivered.clay = 25;
+run(d, 60);
+report("drone delivers plates", d.built.has("smelter-2") && machineLevel(d, "smelter") === 2, { left: orderNeeds(d, "plate") });
 
-// Ore falls: mine a field empty and new nodes drop back in, only inside the field.
+// Robot stages: an upgrade order makes the robot faster.
+startStageUpgrade(d, "robot-iron", () => undefined);
+const stageOrder = d.order as GameState["order"];
+report("stage order", stageOrder?.kind === "stage" && stageOrder.targetId === "robot-iron");
+
+// Mining drill: bores through the ridge and opens the way north.
+const b = createState(MOON);
+for (const id of ["workbench", "smelter", "robot-iron", "smelter-2"]) b.built.add(id);
+b.order = null;
+startBuild(b, "drill", () => undefined);
+b.order!.delivered = { carbon: 150, plate: 70, clay: 39, ironOre: 0, heliumX: 0, heliumCell: 0 };
+b.player.x = 3.8; b.player.z = -6.2; b.player.carry = ["clay"];
+run(b, 1);
+const builtDrill = b.built.has("drill") && !isRidgeOpen(b);
+run(b, 20);
+report("drill opens the ridge", builtDrill && isRidgeOpen(b));
+
+// Material falls back into a mined-out field, only inside the field; iron stays hidden until the smelter.
 const f = createState(MOON);
-const field = oreFields(MOON).find((x) => x.item === "ironOre")!;
-for (const node of f.deposits) if (node.item === "ironOre") node.amount = 0;
-f.player.x = 0; f.player.z = 3;
-for (let i = 0; i < 30 * 60; i++) step(f, { x: 0, z: 0 }, 1 / 30);
-const iron = f.deposits.filter((x) => x.item === "ironOre" && x.amount > 0);
-console.log("ore refill:", JSON.stringify({ ok: iron.length === field.capacity && iron.every((x) => Math.hypot(x.x - field.x, x.z - field.z) <= field.radius + 1e-6), nodes: iron.length }));
+const field = oreFields(MOON).find((x) => x.item === "carbon")!;
+for (const node of f.deposits) if (node.item === "carbon") node.amount = 0;
+run(f, 60);
+const carbon = f.deposits.filter((x) => x.item === "carbon" && x.amount > 0);
+const ironHidden = f.deposits.every((x) => x.item !== "ironOre");
+report("ore refill", carbon.length === field.capacity && carbon.every((x) => Math.hypot(x.x - field.x, x.z - field.z) <= field.radius + 1e-6) && ironHidden, { nodes: carbon.length });
+console.log("stockpile cap", ROBOT.stockpileCapacity);

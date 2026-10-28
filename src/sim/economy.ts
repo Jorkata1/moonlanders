@@ -1,19 +1,22 @@
-import { BOOST, DEPOSIT, ITEMS, MACHINE, PADS, PLAYER, UPGRADES, capacityFor, mineIntervalFor, type ItemId, type UpgradeId } from "../config";
-import { takeFromDeposit } from "./orefall";
-import type { MachineDef, UnlockDef } from "../planets/types";
+import { BOOST, DEPOSIT, PADS, PLAYER, capacityFor, mineIntervalFor, type ItemId } from "../config";
+import type { MachineDef, MachineLevel } from "../planets/types";
 import type { Emit } from "./events";
-import { distance, isAvailable, isRocketReachable, rocketComplete, rocketNeeds, type DepositState, type GameState } from "./state";
+import { takeFromDeposit } from "./orefall";
+import { deliverToOrder, orderNeeds, orderSite } from "./orders";
+import { distance, isAvailable, machineLevel, type DepositState, type GameState } from "./state";
 
 export function boostFactor(state: GameState): number {
   return state.boostSeconds > 0 ? BOOST.multiplier : 1;
 }
 
 export function carryCapacity(state: GameState): number {
-  return capacityFor(state.upgrades.capacity);
+  return capacityFor(state.suit.capacity);
 }
 
-export function isPadAvailable(state: GameState, unlock: UnlockDef): boolean {
-  return !state.unlocked.has(unlock.id) && unlock.requires.every((id) => state.unlocked.has(id));
+/** Capacities and speed of a machine at its current level. */
+export function machineStats(state: GameState, def: MachineDef): MachineLevel {
+  const levels = def.levels;
+  return levels[Math.min(levels.length, machineLevel(state, def.id)) - 1] ?? (levels[0] as MachineLevel);
 }
 
 export function nearestMinableDeposit(state: GameState, x: number, z: number, item: ItemId | null, range: number): DepositState | null {
@@ -31,6 +34,7 @@ export function nearestMinableDeposit(state: GameState, x: number, z: number, it
   return best;
 }
 
+/** The drill warms up once per field (a short step away keeps it warm), then mines on a timer. */
 export function updatePlayerMining(state: GameState, dt: number, emit: Emit): void {
   const player = state.player;
   player.miningTarget = null;
@@ -38,8 +42,11 @@ export function updatePlayerMining(state: GameState, dt: number, emit: Emit): vo
   const target = nearestMinableDeposit(state, player.x, player.z, null, PLAYER.mineRange);
   if (!target) {
     player.mineTimer = 0;
+    player.outOfReach += dt;
+    if (player.outOfReach > PLAYER.warmupGraceSeconds) player.warmup = 0;
     return;
   }
+  player.outOfReach = 0;
   if (player.carry.length >= carryCapacity(state)) {
     if (player.mineTimer >= 0) emit({ type: "backpackFull" });
     player.mineTimer = -1; // emit once until something changes
@@ -47,8 +54,13 @@ export function updatePlayerMining(state: GameState, dt: number, emit: Emit): vo
   }
   if (player.mineTimer < 0) player.mineTimer = 0;
   player.miningTarget = target.id;
+  if (player.warmup < PLAYER.warmupSeconds) {
+    player.warmup += dt;
+    if (player.warmup >= PLAYER.warmupSeconds) emit({ type: "drillLocked", at: target });
+    return;
+  }
   player.mineTimer += dt * boostFactor(state);
-  const interval = mineIntervalFor(state.upgrades.mining);
+  const interval = mineIntervalFor(state.suit.mining);
   while (player.mineTimer >= interval && target.amount > 0 && player.carry.length < carryCapacity(state)) {
     player.mineTimer -= interval;
     takeFromDeposit(target);
@@ -66,16 +78,15 @@ function machineDef(state: GameState, id: string): MachineDef {
 
 export function updateMachines(state: GameState, dt: number): void {
   for (const machine of state.machines.values()) {
-    if (!state.unlocked.has(machine.id)) continue;
+    if (!state.built.has(machine.id)) continue;
     const def = machineDef(state, machine.id);
+    const stats = machineStats(state, def);
     if (machine.progress === null) {
-      if (machine.input <= 0 || machine.output >= MACHINE.outputCapacity) continue;
-      if (def.secondInput && machine.secondInput <= 0) continue;
-      machine.input -= 1;
-      if (def.secondInput) machine.secondInput -= 1;
+      if (machine.input < def.inputPerItem || machine.output >= stats.outputCapacity) continue;
+      machine.input -= def.inputPerItem;
       machine.progress = 0;
     }
-    machine.progress += (dt * boostFactor(state)) / def.secondsPerItem;
+    machine.progress += (dt * boostFactor(state)) / stats.secondsPerItem;
     if (machine.progress >= 1) {
       machine.output += 1;
       machine.processed += 1;
@@ -90,41 +101,30 @@ function topIndex(carry: readonly ItemId[], accept: (item: ItemId) => boolean): 
   return -1;
 }
 
-/** One transfer action per tick: sell, feed a machine, collect output or load the rocket. */
+/** One transfer action per tick: hand materials to the order, feed a machine, or collect its output. */
 function transferOnce(state: GameState, emit: Emit): boolean {
   const player = state.player;
-  const planet = state.planet;
   const onPad = (p: { x: number; z: number }) => distance(player, p) <= PADS.radius;
 
-  if (onPad(planet.sellPad) && player.carry.length > 0) {
-    const item = player.carry.pop() as ItemId;
-    const credits = ITEMS[item].sellPrice;
-    state.credits += credits;
-    state.stats.earned += credits;
-    emit({ type: "sold", item, credits });
-    return true;
+  if (state.order && onPad(orderSite(state, state.order))) {
+    const index = topIndex(player.carry, (item) => orderNeeds(state, item) > 0);
+    if (index >= 0) {
+      const item = player.carry.splice(index, 1)[0] as ItemId;
+      return deliverToOrder(state, item, player, null, emit);
+    }
   }
 
-  for (const def of planet.machines) {
-    if (!state.unlocked.has(def.id)) continue;
+  for (const def of state.planet.machines) {
+    if (!state.built.has(def.id)) continue;
     const machine = state.machines.get(def.id);
     if (!machine) continue;
-    if (onPad(def.inputPad) && machine.input < MACHINE.inputCapacity) {
+    const stats = machineStats(state, def);
+    if (onPad(def.inputPad) && machine.input < stats.inputCapacity) {
       const index = topIndex(player.carry, (item) => item === def.input);
       if (index >= 0) {
         player.carry.splice(index, 1);
         machine.input += 1;
-        emit({ type: "delivered", item: def.input, to: def.inputPad, feed: { machineId: def.id, second: false } });
-        return true;
-      }
-    }
-    const second = def.secondInput;
-    if (second && onPad(second.pad) && machine.secondInput < MACHINE.inputCapacity) {
-      const index = topIndex(player.carry, (item) => item === second.item);
-      if (index >= 0) {
-        player.carry.splice(index, 1);
-        machine.secondInput += 1;
-        emit({ type: "delivered", item: second.item, to: second.pad, feed: { machineId: def.id, second: true } });
+        emit({ type: "fed", item: def.input, machineId: def.id, to: def.inputPad, by: null });
         return true;
       }
     }
@@ -132,17 +132,6 @@ function transferOnce(state: GameState, emit: Emit): boolean {
       machine.output -= 1;
       player.carry.push(def.output);
       emit({ type: "pickedUp", item: def.output, from: def.outputPad });
-      return true;
-    }
-  }
-
-  if (isRocketReachable(state) && onPad(planet.rocket.pad)) {
-    const index = topIndex(player.carry, (item) => rocketNeeds(state, item) > 0);
-    if (index >= 0) {
-      const item = player.carry.splice(index, 1)[0] as ItemId;
-      state.rocket[item] += 1;
-      emit({ type: "delivered", item, to: planet.rocket });
-      if (rocketComplete(state)) emit({ type: "rocketComplete" });
       return true;
     }
   }
@@ -162,41 +151,4 @@ export function updateTransfers(state: GameState, dt: number, emit: Emit): void 
       break;
     }
   }
-}
-
-export function updatePayPads(state: GameState, dt: number, emit: Emit): void {
-  const player = state.player;
-  const unlock = player.stunned > 0 ? undefined : state.planet.unlocks.find((u) => isPadAvailable(state, u) && distance(player, u) <= PADS.radius);
-  if (!unlock || state.credits <= 0) {
-    state.payAccumulator = 0;
-    return;
-  }
-  const paid = state.paid.get(unlock.id) ?? 0;
-  const rate = Math.max(PADS.minPayPerSecond, unlock.cost / PADS.paySeconds);
-  state.payAccumulator += rate * dt;
-  const whole = Math.floor(state.payAccumulator);
-  if (whole < 1) return;
-  state.payAccumulator -= whole;
-  const amount = Math.min(state.credits, unlock.cost - paid, whole);
-  state.credits -= amount;
-  state.paid.set(unlock.id, paid + amount);
-  emit({ type: "paying", padId: unlock.id });
-  if (paid + amount < unlock.cost) return;
-  state.unlocked.add(unlock.id);
-  state.paid.delete(unlock.id);
-  state.payAccumulator = 0;
-  emit({ type: "unlocked", id: unlock.id });
-}
-
-export type UpgradeResult = { ok: true } | { ok: false; reason: string };
-
-export function buyUpgrade(state: GameState, id: UpgradeId, emit: Emit): UpgradeResult {
-  const level = state.upgrades[id];
-  const cost = UPGRADES[id].costs[level];
-  if (cost === undefined) return { ok: false, reason: "Already at max level" };
-  if (state.credits < cost) return { ok: false, reason: `Needs ${cost - state.credits} more credits` };
-  state.credits -= cost;
-  state.upgrades[id] = level + 1;
-  emit({ type: "upgraded", id, level: level + 1 });
-  return { ok: true };
 }

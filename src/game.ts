@@ -1,13 +1,13 @@
 import { PerspectiveCamera, Scene, Vector3 } from "three";
 import type { AudioKit } from "./audio";
-import { BOOST, PADS, type ItemId } from "./config";
+import { BOOST, type ItemId } from "./config";
 import { aimLift, followShot, launchShot } from "./camera";
 import { createFeedback } from "./feedback";
 import type { Hud } from "./hud";
-import { activePanel, buyFromPanel, toggleFromPanel } from "./panels";
+import { activePanel, orderFromPanel, toggleFromPanel } from "./panels";
 import type { MoveControls } from "./input";
-import { vibrate } from "./haptics";
-import { createIntro, type Intro } from "./intro";
+import { startIntro } from "./gameIntro";
+import type { Intro } from "./intro";
 import type { Quality } from "./quality";
 import { dropItems } from "./sim/inventory";
 import { step } from "./sim/step";
@@ -26,17 +26,12 @@ import { buildWorld } from "./view/world";
 const MAX_FRAME_SECONDS = 0.1;
 const CAMERA_OFFSET = new Vector3(0, 11.5, 8.2);
 const PORTRAIT_ZOOM = 1.45;
-/** Cinematic shots pull back further on portrait screens so the carrier and the base fit. */
-const PORTRAIT_INTRO_DISTANCE = 1.7;
 const COMPACT_QUERY = "(max-width: 760px), (max-height: 480px)";
 const LAUNCH_SECONDS = 4.2;
 const LAUNCH_DONE = -2;
-const POD_OFFSET = { x: 1.6, z: -0.9 } as const;
 
 export interface GameOptions {
   playIntro: boolean;
-  /** First planet: the long opening, and the player arrives in the scout pod. Later planets: a shorter arrival in the player's own rocket. */
-  fullIntro: boolean;
   tutorialDone: boolean;
   seenTips: ReadonlySet<string>;
   touch: boolean;
@@ -52,8 +47,9 @@ export interface GameCallbacks {
 
 export interface Game {
   setRunning(running: boolean): void;
-  buy(key: string, id: string): void;
-  /** Flip the on/off switch of the open panel (drones). */
+  /** Place the order behind a panel card. */
+  order(key: string, id: string): void;
+  /** Flip the on/off switch of the open panel (robots and the drone). */
   toggle(key: string): void;
   drop(item: ItemId): void;
   /** Drop everything of the type on top of the backpack (keyboard shortcut). */
@@ -77,12 +73,9 @@ export function createGame(canvas: HTMLCanvasElement, state: GameState, quality:
   const robots = createRobotsView(scene, pool, state.planet, fx);
   const drones = createDronesView(scene, pool, state.planet);
   world.onMachineIntake((at, color) => fx.sparks(at, color, quality.tier === "low" ? 2 : 5));
-  const podSpot = { x: state.planet.dome.x + POD_OFFSET.x, z: state.planet.dome.z + POD_OFFSET.z };
-  const lander = options.fullIntro ? landerModel() : null;
-  if (lander) {
-    lander.root.position.copy(world.groundAt(podSpot));
-    scene.add(lander.root);
-  }
+  const lander = landerModel();
+  lander.root.position.copy(world.groundAt(state.planet.podSpot));
+  scene.add(lander.root);
   enableShadows(scene);
   pipeline.applyReflections(scene);
 
@@ -99,7 +92,8 @@ export function createGame(canvas: HTMLCanvasElement, state: GameState, quality:
   let turboLoading = false;
   const guidance = createGuidance(state, hud, { ...options, onTutorialDone: callbacks.onTutorialDone, onTipSeen: callbacks.onTipSeen });
   const cameraTarget = new Vector3(state.player.x, 0, state.player.z);
-  const workshopSpot = { x: state.planet.workshop.x, z: state.planet.workshop.z + PADS.workshopOffset };
+  let drillDust = 0;
+  let lastWarmup = 0;
   let intro: Intro | null = null;
 
   const feedback = createFeedback(state, world, playerView, robots, drones, fx, hud, audio, {
@@ -115,26 +109,8 @@ export function createGame(canvas: HTMLCanvasElement, state: GameState, quality:
   });
 
   if (options.playIntro) {
-    const startZoom = window.innerWidth < window.innerHeight ? PORTRAIT_ZOOM : 1;
-    const ground = world.groundAt(state.player);
-    intro = createIntro({
-      scene,
-      props: world.introProps(),
-      descender: lander
-        ? { object: lander.root, flame: lander.flame, rest: world.groundAt(podSpot), spot: world.groundAt(podSpot), drift: true }
-        : { object: world.rocket.ship, flame: world.rocket.flame, rest: new Vector3(0, SHIP_REST_HEIGHT, 0), spot: world.groundAt(state.planet.rocket), drift: false },
-      base: world.groundAt(state.planet.dome),
-      gameplayShot: { position: ground.clone().add(CAMERA_OFFSET.clone().multiplyScalar(startZoom)), target: ground.clone().add(new Vector3(0, 0.6, 0)) },
-      captions: state.planet.arrivalCaptions,
-      full: options.fullIntro,
-      distanceScale: startZoom > 1 ? PORTRAIT_INTRO_DISTANCE : 1,
-    });
-    intro.onLand((at, heavy) => {
-      fx.dust(at.clone().add(new Vector3(0, 0.2, 0)), heavy ? 34 : 14, state.planet.palette.dust);
-      audio.play(heavy ? "impact" : "thud");
-      shake = Math.max(shake, heavy ? 0.4 : 0.15);
-      vibrate(heavy ? 40 : 15);
-    });
+    const portrait = window.innerWidth < window.innerHeight;
+    intro = startIntro({ state, world, lander, fx, audio, cameraOffset: CAMERA_OFFSET.clone().multiplyScalar(portrait ? PORTRAIT_ZOOM : 1), portrait, shake: (amount) => (shake = Math.max(shake, amount)) });
   }
 
   function resize(): void {
@@ -170,6 +146,18 @@ export function createGame(canvas: HTMLCanvasElement, state: GameState, quality:
       launchTimer = LAUNCH_DONE;
       callbacks.onLaunched();
     }
+  }
+
+  /** Dust, sparks and a faint rumble at the drill bit while it bores through the ridge. */
+  function updateDrillDust(dt: number): void {
+    const tip = world.drillTip(state);
+    if (!tip) return;
+    drillDust -= dt;
+    if (drillDust > 0) return;
+    drillDust = 0.09;
+    fx.dust(tip.clone(), 3, state.planet.palette.dust);
+    fx.sparks(tip.clone(), 0xffb060, 2);
+    if (Math.hypot(state.player.x - tip.x, state.player.z - tip.z) < 9) shake = Math.max(shake, 0.04);
   }
 
   function updateIntro(dt: number): boolean {
@@ -208,14 +196,18 @@ export function createGame(canvas: HTMLCanvasElement, state: GameState, quality:
 
     if (running && !inIntro && launchTimer < 0) {
       for (const event of step(state, controls.read(), dt)) feedback.handle(event);
+      // A rising whine while the drill warms up on a new field.
+      if (lastWarmup === 0 && state.player.warmup > 0) audio.play("warmup");
+      lastWarmup = state.player.warmup;
       saveTimer += dt;
       if (saveTimer > 3) {
         saveTimer = 0;
         callbacks.onSave();
       }
-      const panel = activePanel(state, workshopSpot, (id) => world.robotDock(id));
-      if (panel?.key === "workshop") guidance.showTip("workshop");
-      hud.showPanel(panel, state.credits);
+      const panel = activePanel(state);
+      if (panel?.key === "workbench") guidance.showTip("workbench");
+      hud.showPanel(panel);
+      updateDrillDust(dt);
       panelOpen = panel !== null;
       hud.update(state);
       hud.setTurbo(state.boostSeconds > 0 ? "active" : turboLoading ? "loading" : "ready", state.boostSeconds);
@@ -253,14 +245,14 @@ export function createGame(canvas: HTMLCanvasElement, state: GameState, quality:
       controls.setEnabled(playable);
       hud.setVisible(playable);
       hud.showIntro(next && inIntroNow());
-      if (!next) hud.showPanel(null, state.credits);
+      if (!next) hud.showPanel(null);
     },
     toggle(key) {
       toggleFromPanel(state, key);
       audio.play("pickup");
     },
-    buy(key, id) {
-      const result = buyFromPanel(state, key, id, feedback.handle);
+    order(key, id) {
+      const result = orderFromPanel(state, key, id, feedback.handle);
       if (result.ok) return;
       hud.toast(result.reason, "bad");
       audio.play("error");
@@ -291,7 +283,7 @@ export function createGame(canvas: HTMLCanvasElement, state: GameState, quality:
     dispose() {
       pipeline.renderer.setAnimationLoop(null);
       window.removeEventListener("resize", resize);
-      hud.showPanel(null, state.credits);
+      hud.showPanel(null);
       hud.showCoach(null);
       audio.setHum(0);
       disposeScene(scene);
