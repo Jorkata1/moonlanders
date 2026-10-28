@@ -1,7 +1,13 @@
 // Model showcase: one model at a time on a patch of regolith under the game's light, for visual review.
 // Build with `node test/build-entry.mjs test/showcase-entry.ts dist/showcase.html`, then call show(name, view).
 import { Color, DirectionalLight, Group, HemisphereLight, Mesh, MeshStandardMaterial, PerspectiveCamera, PlaneGeometry, Scene, type Object3D } from "three";
+import { ITEM_IDS } from "../src/config";
 import { astronautModel } from "../src/view/astronaut";
+import { laserDrill } from "../src/view/characters";
+import { depositModel } from "../src/view/deposits";
+import { drillRigModel } from "../src/view/drillRig";
+import { itemModel } from "../src/view/items";
+import { domeModel, landerModel } from "../src/view/structures";
 import { droneModel } from "../src/view/droneModel";
 import { refineryModel } from "../src/view/refinery";
 import { createRenderPipeline, enableShadows } from "../src/view/render";
@@ -49,6 +55,20 @@ const refinery = refineryModel();
 const rocket = rocketModel();
 const suit = suitStationModel();
 const bench = workbenchModel();
+const rig = drillRigModel();
+/** Several models side by side, `spacing` apart and scaled up by `scale`. */
+function row(objects: Object3D[], spacing: number, scale = 1): Group {
+  const group = new Group();
+  objects.forEach((object, i) => {
+    object.position.x = (i - (objects.length - 1) / 2) * spacing;
+    object.scale.multiplyScalar(scale);
+    group.add(object);
+  });
+  return group;
+}
+const drillTool = laserDrill(3);
+drillTool.root.rotation.z = Math.PI / 2;
+drillTool.root.position.y = 0.6;
 const machine = (model: typeof smelter) => (time: number) => {
   model.update(time, STEP, true, (time / 2) % 1);
   model.rig.update("working", time, STEP);
@@ -62,6 +82,12 @@ const exhibits: Record<string, Exhibit> = {
   workbench: { object: bench.root, close: [5, 3.2, 1], animate: (time) => bench.update(time, STEP, true) },
   suit: { object: suit.root, close: [5.5, 3.2, 1.2], animate: (time) => suit.update(time, STEP, true) },
   rocket: { object: rocket.root, close: [8.5, 4, 2.6], animate: (time) => rocket.setBuild(0.5, false, time, STEP) },
+  drill: { object: rig.root, close: [5, 2.8, 1.0], animate: (time) => rig.update(0.5, time, STEP) },
+  dome: { object: domeModel(3.6), close: [9, 6, 0.8], animate: () => undefined },
+  pod: { object: landerModel().root, close: [4, 2, 1], animate: () => undefined },
+  deposits: { object: row((["carbon", "clay", "ironOre", "heliumX"] as const).map((item, i) => depositModel(item, i + 3).root), 2), close: [6, 3, 0.5], animate: () => undefined },
+  items: { object: row(ITEM_IDS.map((item) => itemModel(item)), 0.8, 2.5), close: [4.6, 2.2, 0.2], animate: () => undefined },
+  tool: { object: drillTool.root, close: [2.6, 1.4, 0.6], animate: (time) => (drillTool.prongs.rotation.y = time * 6) },
 };
 const stage = new Group();
 scene.add(stage);

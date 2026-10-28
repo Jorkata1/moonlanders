@@ -19,8 +19,8 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   clay: { name: "Moon clay", plural: "Moon clay", color: 0xb9a68d, shape: "clay", stackHeight: 0.16 },
   ironOre: { name: "Iron ore", plural: "Iron ore", color: 0xd9813f, shape: "ore", stackHeight: 0.2 },
   plate: { name: "Metal plate", plural: "Metal plates", color: 0xc9d1da, shape: "plate", stackHeight: 0.085 },
-  heliumX: { name: "Helium X", plural: "Helium X", color: 0xb27bff, shape: "crystal", stackHeight: 0.2 },
-  heliumCell: { name: "Helium cell", plural: "Helium cells", color: 0x6dffd2, shape: "cell", stackHeight: 0.24 },
+  heliumX: { name: "Helium X", plural: "Helium X", color: 0xb27bff, shape: "crystal", stackHeight: 0.16 },
+  heliumCell: { name: "Helium cell", plural: "Helium cells", color: 0x6dffd2, shape: "cell", stackHeight: 0.3 },
 };
 
 /** A price in materials, e.g. { carbon: 30, clay: 20 }. */
