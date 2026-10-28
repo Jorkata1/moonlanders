@@ -15,6 +15,8 @@ export interface StormView {
   sync(state: GameState, dt: number, time: number): void;
   /** 0 when calm, 1 at the height of a storm. */
   intensity(): number;
+  /** Thin the everyday haze (1 is normal, lower sees further), for wide cinematic shots. */
+  setClarity(clarity: number): void;
 }
 
 /**
@@ -27,7 +29,12 @@ export function createStormView(scene: Scene, planet: PlanetDef): StormView {
   scene.fog = fog;
   scene.background = sky.clone();
   let level = 0;
-  if (!planet.storms) return { sync: () => undefined, intensity: () => 0 };
+  let clarity = 1;
+  const setClarity = (value: number): void => {
+    clarity = value;
+    fog.density = BASE_FOG_DENSITY * clarity + level * (STORM_FOG_DENSITY - BASE_FOG_DENSITY);
+  };
+  if (!planet.storms) return { sync: () => undefined, intensity: () => 0, setClarity };
 
   const baseFog = new Color(planet.palette.fog);
   const dust = new Color(planet.palette.dust);
@@ -57,7 +64,7 @@ export function createStormView(scene: Scene, planet: PlanetDef): StormView {
     sync(state, dt, time) {
       const target = state.storm.phase === "raging" ? 1 : state.storm.phase === "warning" ? WARNING_INTENSITY : 0;
       level += Math.sign(target - level) * Math.min(Math.abs(target - level), dt * FADE_PER_SECOND);
-      fog.density = BASE_FOG_DENSITY + level * (STORM_FOG_DENSITY - BASE_FOG_DENSITY);
+      fog.density = BASE_FOG_DENSITY * clarity + level * (STORM_FOG_DENSITY - BASE_FOG_DENSITY);
       fog.color.copy(baseFog).lerp(dust, level);
       (scene.background as Color).copy(sky).lerp(dustSky, level);
 
@@ -75,5 +82,6 @@ export function createStormView(scene: Scene, planet: PlanetDef): StormView {
       attribute.needsUpdate = true;
     },
     intensity: () => level,
+    setClarity,
   };
 }

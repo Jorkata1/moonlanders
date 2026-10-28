@@ -228,7 +228,7 @@ export function buildWorld(scene: Scene, state: GameState, pool: ItemPool, shado
       return [
         { object: dome, kind: "dome" },
         { object: suitStation.root, kind: "station" },
-        ...decor.pieces.map((piece): DropProp => ({ object: piece.root, kind: piece.kind === "cable" ? "cable" : "decor" })),
+        ...decor.pieces.map((piece): DropProp => ({ object: piece.root, kind: piece.kind === "cable" || piece.kind === "debris" ? piece.kind : "decor" })),
         { object: suitPad.root, kind: "pad" },
       ];
     },

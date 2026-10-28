@@ -2,7 +2,7 @@
 import { PLAYER, ROBOT } from "../src/config";
 import { MOON } from "../src/planets/moon";
 import { carriedCounts, dropItems } from "../src/sim/inventory";
-import { oreFields } from "../src/sim/orefall";
+import { isOpenGround, oreFields } from "../src/sim/orefall";
 import { orderNeeds, startBuild, startStageUpgrade, startSuitUpgrade } from "../src/sim/orders";
 import { setWorkerEnabled } from "../src/sim/robots";
 import { createState, isRidgeOpen, machineLevel, type GameState } from "../src/sim/state";
@@ -31,7 +31,8 @@ report("drop and pick up", keptPile && s.piles.length === 0 && s.player.carry.le
 
 // Drill warm-up: nothing for 2 s at a rock, then mining starts.
 const w = createState(MOON);
-w.player.x = -7.2; w.player.z = -4.2;
+const firstCarbon = MOON.deposits.find((d) => d.item === "carbon")!;
+w.player.x = firstCarbon.x; w.player.z = firstCarbon.z + 1.4;
 run(w, PLAYER.warmupSeconds - 0.2);
 const coldCount = w.player.carry.length;
 run(w, 1.5);
@@ -100,7 +101,8 @@ for (const id of ["workbench", "smelter", "robot-iron", "smelter-2"]) b.built.ad
 b.order = null;
 startBuild(b, "drill", () => undefined);
 b.order!.delivered = { carbon: 150, plate: 70, clay: 39, ironOre: 0, heliumX: 0, heliumCell: 0 };
-b.player.x = 3.8; b.player.z = -6.2; b.player.carry = ["clay"];
+const drillSite = MOON.builds.find((x) => x.id === "drill")!.site;
+b.player.x = drillSite.x; b.player.z = drillSite.z; b.player.carry = ["clay"];
 run(b, 1);
 const builtDrill = b.built.has("drill") && !isRidgeOpen(b);
 run(b, 20);
@@ -114,4 +116,8 @@ run(f, 60);
 const carbon = f.deposits.filter((x) => x.item === "carbon" && x.amount > 0);
 const ironHidden = f.deposits.every((x) => x.item !== "ironOre");
 report("ore refill", carbon.length === field.capacity && carbon.every((x) => Math.hypot(x.x - field.x, x.z - field.z) <= field.radius + 1e-6) && ironHidden, { nodes: carbon.length });
+
+// Rock never lands in the ridge, off the map or on a building spot, at the start or when it falls.
+const offGround = [...MOON.deposits, ...carbon].filter((d) => !isOpenGround(MOON, d)).map((d) => d.id);
+report("rocks on open ground", offGround.length === 0, offGround);
 console.log("stockpile cap", ROBOT.stockpileCapacity);

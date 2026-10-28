@@ -26,6 +26,8 @@ import { regolithTexture } from "./textures";
 const GROUND_SIZE = 110;
 const GROUND_SEGMENTS = 150;
 const EDGE_RISE = 0.55;
+/** Pebbles and small rocks strewn over the map. */
+const SCATTER_COUNT = 520;
 
 function hash(x: number, z: number): number {
   const s = Math.sin(x * 127.1 + z * 311.7) * 43758.5453;
@@ -152,6 +154,9 @@ function ground(planet: PlanetDef): Mesh {
   return mesh;
 }
 
+/** Rock shades come in a few steps so rocks share materials and bake into few draw calls. */
+const ROCK_SHADES = [0.82, 0.92, 1.02, 1.12] as const;
+
 function rock(planet: PlanetDef, scale: number, seed: number): Mesh {
   const geometry = new IcosahedronGeometry(1, 1);
   const position = geometry.getAttribute("position") as BufferAttribute;
@@ -164,7 +169,8 @@ function rock(planet: PlanetDef, scale: number, seed: number): Mesh {
     position.setXYZ(i, x * jitter, y * jitter * 0.72, z * jitter);
   }
   geometry.computeVertexNormals();
-  const shade = new Color(planet.palette.rock).multiplyScalar(0.85 + hash(seed, 7) * 0.3);
+  const step = ROCK_SHADES[Math.floor(hash(seed, 7) * ROCK_SHADES.length)] ?? 1;
+  const shade = new Color(planet.palette.rock).multiplyScalar(step);
   const mesh = new Mesh(geometry, flat(shade.getHex(), 0.95));
   mesh.scale.setScalar(scale);
   mesh.rotation.set(hash(seed, 1) * 0.6, hash(seed, 2) * Math.PI * 2, hash(seed, 3) * 0.6);
@@ -173,34 +179,47 @@ function rock(planet: PlanetDef, scale: number, seed: number): Mesh {
 
 export interface RidgeView {
   readonly root: Group;
-  /** Boulders that block the gap until the path unlock is bought. */
+  /** Boulders that block the gap until the drill bores through. */
   readonly gapBoulders: Mesh[];
 }
 
+/** Rows of the ridge, front (south) to back: depth offset, smallest and largest boulder. */
+const RIDGE_ROWS = [
+  { offset: 1, min: 1.2, max: 1.7 },
+  { offset: 0, min: 2, max: 2.8 },
+  { offset: -1.2, min: 2.3, max: 3.2 },
+] as const;
+const RIDGE_STEP = 1.7;
+
+/** A massive wall of boulders, three rows deep; the gap is filled with boulders just as big. */
 function ridge(planet: PlanetDef): RidgeView {
   const root = new Group();
   const gapBoulders: Mesh[] = [];
   const { z, gapHalfWidth } = planet.ridge;
   let seed = 11;
-  for (let x = planet.bounds.minX - 6; x <= planet.bounds.maxX + 6; x += 1.15) {
-    seed += 1;
-    const inGap = Math.abs(x) < gapHalfWidth + 0.2;
-    const scale = inGap ? 0.75 + hash(seed, 5) * 0.25 : 1.1 + hash(seed, 9) * 0.9;
-    const boulder = rock(planet, scale, seed);
-    boulder.position.set(x + (hash(seed, 4) - 0.5) * 0.4, heightAt(planet, x, z) + scale * 0.35, z + (hash(seed, 6) - 0.5) * 0.7);
-    root.add(boulder);
-    if (inGap) {
-      boulder.userData.dynamic = true;
-      gapBoulders.push(boulder);
+  RIDGE_ROWS.forEach((row, index) => {
+    const shift = (index % 2) * RIDGE_STEP * 0.5;
+    for (let x = planet.bounds.minX - 8 + shift; x <= planet.bounds.maxX + 8; x += RIDGE_STEP) {
+      seed += 1;
+      const scale = row.min + hash(seed, 9) * (row.max - row.min);
+      const boulder = rock(planet, scale, seed);
+      const bz = z + row.offset + (hash(seed, 6) - 0.5) * 0.5;
+      const bx = x + (hash(seed, 4) - 0.5) * 0.5;
+      boulder.position.set(bx, heightAt(planet, bx, bz) + scale * 0.3, bz);
+      root.add(boulder);
+      if (Math.abs(bx) < gapHalfWidth + 0.4) {
+        boulder.userData.dynamic = true;
+        gapBoulders.push(boulder);
+      }
     }
-  }
+  });
   return { root, gapBoulders };
 }
 
 /** Scattered pebbles and rocks as one instanced mesh, avoiding gameplay spots. */
 function scatter(planet: PlanetDef, keepClear: readonly (Point & { radius: number })[]): InstancedMesh {
   const geometry = new DodecahedronGeometry(1, 0);
-  const mesh = new InstancedMesh(geometry, flat(planet.palette.rock, 0.95), 260);
+  const mesh = new InstancedMesh(geometry, flat(planet.palette.rock, 0.95), SCATTER_COUNT);
   const matrix = new Matrix4();
   const rotation = new Quaternion();
   const scale = new Vector3();
@@ -210,7 +229,7 @@ function scatter(planet: PlanetDef, keepClear: readonly (Point & { radius: numbe
     const x = planet.bounds.minX - 8 + hash(i, 1.3) * (planet.bounds.maxX - planet.bounds.minX + 16);
     const z = planet.bounds.minZ - 8 + hash(i, 2.7) * (planet.bounds.maxZ - planet.bounds.minZ + 16);
     if (keepClear.some((p) => Math.hypot(p.x - x, p.z - z) < p.radius)) continue;
-    if (Math.abs(z - planet.ridge.z) < 1.5) continue;
+    if (Math.abs(z - planet.ridge.z) < 3) continue;
     const size = 0.06 + hash(i, 4.1) ** 3 * 0.55;
     position.set(x, heightAt(planet, x, z) + size * 0.2, z);
     rotation.setFromAxisAngle(new Vector3(hash(i, 5), 1, hash(i, 6)).normalize(), hash(i, 7) * Math.PI * 2);

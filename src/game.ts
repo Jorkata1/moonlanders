@@ -26,6 +26,8 @@ import { buildWorld } from "./view/world";
 const MAX_FRAME_SECONDS = 0.1;
 const CAMERA_OFFSET = new Vector3(0, 11.5, 8.2);
 const PORTRAIT_ZOOM = 1.45;
+/** The intro's wide shots see through most of the everyday haze. */
+const INTRO_HAZE = 0.4;
 const COMPACT_QUERY = "(max-width: 760px), (max-height: 480px)";
 const LAUNCH_SECONDS = 4.2;
 const LAUNCH_DONE = -2;
@@ -163,6 +165,7 @@ export function createGame(canvas: HTMLCanvasElement, state: GameState, quality:
   function updateIntro(dt: number): boolean {
     if (!intro || intro.done()) return false;
     const shot = intro.update(dt);
+    world.storm.setClarity(INTRO_HAZE);
     hud.setIntroCaption(intro.caption());
     playerView.model.root.visible = intro.landed();
     if (shot) {
@@ -175,6 +178,7 @@ export function createGame(canvas: HTMLCanvasElement, state: GameState, quality:
   }
 
   function finishIntro(): void {
+    world.storm.setClarity(1);
     hud.showIntro(false);
     hud.setIntroCaption(null);
     playerView.model.root.visible = true;

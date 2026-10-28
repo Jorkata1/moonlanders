@@ -11,7 +11,7 @@ export interface DecorPiece {
   readonly kind: DecorKind | "cable" | "beacon";
 }
 
-/** Base-camp set dressing: solar farm, antenna, cables, path beacons, crates and fuel tanks. */
+/** Base-camp set dressing: solar farm, antenna, cables, path beacons, lamps, crates, fuel tanks and crash debris. */
 export interface DecorView {
   root: Group;
   pieces: DecorPiece[];
@@ -65,6 +65,27 @@ function flag(): Group {
   return group;
 }
 
+/** A path light: a slim post with a warm lamp head. */
+function lamp(): Group {
+  const group = new Group();
+  group.add(mesh(new CylinderGeometry(0.06, 0.1, 1.5, 8), LOOK.dark(), 0, 0.75, 0));
+  group.add(box(0.34, 0.1, 0.22, LOOK.steel(), 0.12, 1.52, 0, 0.03));
+  group.add(box(0.26, 0.04, 0.16, glow(0xffd9a0, 2.6), 0.12, 1.46, 0, 0.01));
+  return group;
+}
+
+/** Scorched hull panels and a broken fin thrown clear when the rocket came down. */
+function debris(): Group {
+  const group = new Group();
+  const scorched = surface({ color: 0x2a2624, roughness: 0.95 });
+  group.add(box(1.2, 0.08, 0.8, LOOK.white(), 0, 0.12, 0, 0.02).rotateZ(0.25).rotateX(-0.1));
+  group.add(box(0.7, 0.02, 0.5, scorched, 0.1, 0.2, 0.05, 0.01).rotateZ(0.25));
+  group.add(box(0.08, 0.9, 0.6, LOOK.orange(), 0.9, 0.3, 0.5, 0.03).rotateZ(1.1).rotateY(0.6));
+  group.add(box(0.5, 0.06, 0.4, LOOK.steel(), -0.8, 0.06, 0.6, 0.02).rotateY(0.9));
+  group.add(mesh(new CylinderGeometry(0.18, 0.24, 0.5, 10), scorched, -0.5, 0.15, -0.5).rotateZ(Math.PI / 2.4));
+  return group;
+}
+
 /** Weatherproof connector box where a cable meets a building. */
 function junction(): Group {
   const group = new Group();
@@ -104,6 +125,8 @@ const BUILDERS: Record<Exclude<DecorKind, "solarFarm">, () => Group> = {
   crates: crateStack,
   flag,
   fuelTanks,
+  lamp,
+  debris,
 };
 
 function decorPiece(planet: PlanetDef, decor: DecorDef): Group {

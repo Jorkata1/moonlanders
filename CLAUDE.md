@@ -2,7 +2,7 @@
 
 A 3D browser game for CrazyGames: an astronaut crash-lands on the Moon, mines materials, builds machines and robots from them, and repairs the rocket's jump drive (in the style of Moon Pioneer). There is no money: every build, suit upgrade and robot stage costs planet materials. Only the Moon is playable; Mars and an ice moon show as "Coming soon".
 
-**Economy:** carbon and moon clay are mined from the start; iron ore falls from the sky into its field once the smelter is built (smelter: ore → metal plates 1:1); Helium X lies beyond the ridge, which the mining drill bores open, and only the player mines it (refinery: 2 Helium X → 1 helium cell). The workbench orders one build at a time: a see-through hologram appears where it will stand, and the player, robots and the cargo drone carry materials to it. Robots fill stockpiles (up to 100) by their docks and can be switched off; each robot and the drone has 3 paid stages. The suit station sells mining, backpack, oxygen and speed upgrades. The jump drive (carbon, plates, clay, helium cells) finishes the planet.
+**Economy:** carbon and moon clay are mined from the start; iron ore falls from the sky into its field once the smelter is built (smelter: ore → metal plates 1:1); Helium X lies beyond the ridge, which the mining drill bores open, and only the player mines it (refinery: 2 Helium X → 1 helium cell). The workbench orders one build at a time: a see-through hologram appears where it will stand, and the player or the cargo drone carries materials to it. Robots only mine and fill stockpiles (up to 100) by their docks and can be switched off; the drone (after the smelter and the iron robot) is the only worker that carries: stockpiles and plates to the order, iron ore to the smelter. Each robot and the drone has 3 paid stages. The backpack holds 15, then 25 and 35. The suit station sells mining, backpack, oxygen and speed upgrades. The jump drive (carbon, plates, clay, helium cells) finishes the planet.
 
 The owner (Жоро) usually writes in Bulgarian, so reply in Bulgarian. In-game text stays in English, because most CrazyGames players read English.
 
@@ -31,10 +31,10 @@ src/
     step.ts           step(state, input, dt) → SimEvent[]; runs every system in order, advances missions, launches
     orders.ts         the single active order: costs, site, progress, what is still needed, starting builds/suit upgrades/robot stages, delivering
     economy.ts        player mining with the 2 s laser warm-up, machine processing and levels, hand-overs at pads and order sites
-    orefall.ts        ore fields: small meteorites drop new rocks inside each field (only fields whose zone is open); mined-out rocks crumble
+    orefall.ts        ore fields: small meteorites drop new rocks inside each field (only fields whose zone is open, never in the ridge, off the map or on a building spot); mined-out rocks crumble
     inventory.ts      backpack counts, dropping items into piles, picking up piles and robot stockpiles
-    robots.ts         robot AI: mine → carry to the order or the machine that needs it → else fill the stockpile; on/off switch
-    drones.ts         cargo drone: carries smelter plates and stockpiled materials to the active order
+    robots.ts         robot AI: mine → stack the load on the stockpile beside the dock; on/off switch
+    drones.ts         cargo drone, the only worker that carries: feeds a nearly empty machine first, then brings the order what it needs, then tops machines up
     drill.ts          the mining drill boring through the ridge, then opening the way north
     hazards.ts        oxygen and dust storms (calm → warning → raging)
     travel.ts         startNextPlanet(): fresh planet state that keeps suit upgrades (for when more planets ship)
@@ -43,7 +43,7 @@ src/
     events.ts         SimEvent union, the only channel from sim to view/audio
   view/               Three.js rendering
     world.ts          builds the scene and syncs it from state every frame
-    terrain.ts        heightAt(), the levelled ground under buildings, ridge, rocks, stars
+    terrain.ts        heightAt(), the levelled ground under buildings, the three-row boulder ridge, rocks, stars
     deposits.ts       carbon, clay, iron ore and Helium X rock models
     items.ts          carried/stacked item models and the item pool
     machineParts.ts   shared machine fittings: plinth, status lamp tower, fan, input belt and hopper, output hatch and chute
@@ -57,7 +57,7 @@ src/
     drillRig.ts       the mining drill: boom extends into the ridge while boring
     pads.ts           sci-fi hex pads: LED ring (progress on pay pads), hologram icon, price board
     holograms.ts      the spinning hologram icons above pads
-    decor.ts          solar farm, antenna, crates and cables; each piece is its own root so the intro can unfold it
+    decor.ts          solar farm, antenna, lamps, crates, fuel tanks, crash debris and cables; each piece is its own root so the intro can unfold it
     drones.ts         cargo drone model and its dock
     rocket.ts         the crashed rocket: scorch marks, a jump-drive ring whose segments light up as materials arrive, scaffold, smoke
     storm.ts          dust-storm fog and blowing grains

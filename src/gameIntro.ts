@@ -35,6 +35,7 @@ export function startIntro({ state, world, lander, fx, audio, cameraOffset, port
     gameplayShot: { position: ground.clone().add(cameraOffset), target: ground.clone().add(new Vector3(0, 0.6, 0)) },
     captions: state.planet.arrivalCaptions,
     distanceScale: portrait ? PORTRAIT_INTRO_DISTANCE : 1,
+    groundAt: (x, z) => world.groundAt({ x, z }).y,
   });
   // Smoke and embers stream off the burning rocket.
   intro.onTrail((at) => {

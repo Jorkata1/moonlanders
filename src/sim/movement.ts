@@ -6,7 +6,8 @@ import { isRidgeOpen, isStormRaging, type GameState } from "./state";
 const ROCKET_RADIUS = 1.9;
 const STATION_RADIUS = 1.1;
 const DRILL_RADIUS = 1.3;
-const RIDGE_HALF_DEPTH = 0.7;
+/** Half the ridge's thickness: a wall of big boulders the player cannot climb. */
+export const RIDGE_HALF_DEPTH = 2.3;
 const BOOST_SPEED_FACTOR = 1.35;
 
 export interface MoveInput {
@@ -57,7 +58,7 @@ export function ridgeWalls(state: GameState): Rect[] {
   ];
 }
 
-const GAP_APPROACH = 1.6;
+const GAP_APPROACH = RIDGE_HALF_DEPTH + 1;
 
 /**
  * Next point to walk toward on the way to `target`: straight there, unless the ridge is in the

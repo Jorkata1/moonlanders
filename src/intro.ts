@@ -5,8 +5,8 @@ export interface CameraShot {
   target: Vector3;
 }
 
-/** What a prop is, which decides when it unfolds after the escape pod lands. */
-export type DropKind = "dome" | "station" | "decor" | "cable" | "pad";
+/** What a prop is, which decides when it appears: crash debris on impact, the kit after the pod lands. */
+export type DropKind = "dome" | "station" | "decor" | "cable" | "pad" | "debris";
 
 export interface DropProp {
   readonly object: Object3D;
@@ -37,6 +37,8 @@ export interface IntroOptions {
   readonly captions: readonly string[];
   /** Pull the cinematic shots back by this factor (narrow portrait screens need more distance). */
   readonly distanceScale: number;
+  /** Ground height, so the camera never dips into a hill. */
+  readonly groundAt: (x: number, z: number) => number;
 }
 
 export interface Intro {
@@ -64,10 +66,12 @@ const ROCKET_ORIGIN = new Vector3(30, 32, 28);
 /** The pod breaks away from the rocket at this moment and lands at POD_LANDING. */
 const POD_RELEASE = 2.2;
 const POD_LANDING = 8.4;
-const UNFOLD: Readonly<Record<DropKind, number>> = { dome: 8.8, station: 9.4, decor: 9.9, cable: 10.6, pad: 11.1 };
+const UNFOLD: Readonly<Record<DropKind, number>> = { debris: ROCKET_IMPACT, dome: 8.8, station: 9.4, decor: 9.9, cable: 10.6, pad: 11.1 };
 const STAGGER_SECONDS = 0.15;
 const GROW_SECONDS = 0.55;
 const TRAIL_INTERVAL = 0.05;
+/** The camera always stays at least this high above the ground under it. */
+const CAMERA_CLEARANCE = 2.5;
 const UP = new Vector3(0, 1, 0);
 
 function ease(t: number): number {
@@ -93,14 +97,19 @@ function keyframes(options: IntroOptions, rocketStart: Vector3): CameraShot[] {
   const crash = (x: number, y: number, z: number) => options.rocket.spot.clone().add(new Vector3(x, y, z));
   const pod = (x: number, y: number, z: number) => options.pod.spot.clone().add(new Vector3(x, y, z));
   const shots: CameraShot[] = [
-    // Low behind the base, looking up at the burning rocket (tracked, see placeCamera).
-    { position: base(6, 9, 24), target: rocketStart.clone() },
+    // Just behind the base, inside the map, looking up at the burning rocket (tracked, see placeCamera).
+    { position: base(4, 7, 9), target: rocketStart.clone() },
     { position: base(4, 26, 26), target: crash(4, 6, 6) },
     { position: crash(10, 14, 17), target: crash(0, 1.5, 0) },
     { position: pod(5, 15, 18), target: pod(0, 1, -1) },
     { position: base(6, 15, 17), target: base(-2, 0.6, -2) },
   ];
-  for (const shot of shots) shot.position.sub(shot.target).multiplyScalar(options.distanceScale).add(shot.target);
+  // Portrait screens pull back from what each shot looks at; the first shot aims at the far-off
+  // rocket, so it steps back from the base instead.
+  shots.forEach((shot, index) => {
+    const anchor = index === 0 ? options.base : shot.target;
+    shot.position.sub(anchor).multiplyScalar(options.distanceScale).add(anchor);
+  });
   return [...shots, options.gameplayShot];
 }
 
@@ -214,6 +223,7 @@ export function createIntro(options: IntroOptions): Intro {
     targetCurve.getPoint(u, shot.target);
     // Keep the falling rocket framed, then let go as the camera turns to the crash site.
     if (segment === 0) shot.target.lerp(rocket.object.getWorldPosition(scratch), 1 - local);
+    shot.position.y = Math.max(shot.position.y, options.groundAt(shot.position.x, shot.position.z) + CAMERA_CLEARANCE);
   }
 
   function finish(): void {

@@ -94,7 +94,7 @@ export interface CraterDef extends Point {
   readonly radius: number;
 }
 
-export type DecorKind = "solarFarm" | "antenna" | "crates" | "flag" | "fuelTanks";
+export type DecorKind = "solarFarm" | "antenna" | "crates" | "flag" | "fuelTanks" | "lamp" | "debris";
 
 export interface DecorDef extends Point {
   readonly kind: DecorKind;

@@ -2,6 +2,7 @@ import { DEPOSIT, ORE_FALL, PLAYER } from "../config";
 import type { PlanetDef, Point } from "../planets/types";
 import type { Emit } from "./events";
 import type { Random } from "./hazards";
+import { RIDGE_HALF_DEPTH } from "./movement";
 import { distance, fieldKey, isAvailable, type DepositState, type GameState } from "./state";
 
 /** A patch of ground that material keeps falling into; derived from the planet's starting deposits. */
@@ -15,6 +16,40 @@ export interface OreField extends Point {
 }
 
 const fieldCache = new WeakMap<PlanetDef, OreField[]>();
+const reservedCache = new WeakMap<PlanetDef, Array<Point & { radius: number }>>();
+/** New rock keeps this far from the ridge boulders and the map edge. */
+const RIDGE_CLEARANCE = 1.4;
+const EDGE_CLEARANCE = 1.2;
+/** Clear ground kept around buildings, pads and build sites. */
+const SITE_CLEARANCE = 2.2;
+
+/** Spots no rock may land on: buildings, pads and build sites (built or not), and the dome. */
+function reservedSpots(planet: PlanetDef): Array<Point & { radius: number }> {
+  const cached = reservedCache.get(planet);
+  if (cached) return cached;
+  const points: Point[] = [
+    planet.suitStation,
+    planet.suitStation.pad,
+    planet.workbench,
+    planet.workbench.pad,
+    planet.rocket,
+    planet.rocket.pad,
+    ...planet.machines.flatMap((m) => [m, m.inputPad, m.outputPad]),
+    ...planet.builds.flatMap((b) => [b, b.site]),
+  ];
+  const spots = [...points.map((p) => ({ x: p.x, z: p.z, radius: SITE_CLEARANCE })), { ...planet.dome, radius: planet.dome.radius + 1 }];
+  reservedCache.set(planet, spots);
+  return spots;
+}
+
+/** True where a new rock may land: open ground, not in the ridge, off the edge or on a building spot. */
+export function isOpenGround(planet: PlanetDef, spot: Point): boolean {
+  const { bounds, ridge } = planet;
+  if (spot.x < bounds.minX + EDGE_CLEARANCE || spot.x > bounds.maxX - EDGE_CLEARANCE) return false;
+  if (spot.z < bounds.minZ + EDGE_CLEARANCE || spot.z > bounds.maxZ - EDGE_CLEARANCE) return false;
+  if (Math.abs(spot.z - ridge.z) < RIDGE_HALF_DEPTH + RIDGE_CLEARANCE) return false;
+  return !reservedSpots(planet).some((r) => distance(r, spot) < r.radius);
+}
 
 export function oreFields(planet: PlanetDef): OreField[] {
   const cached = fieldCache.get(planet);
@@ -45,6 +80,7 @@ function landingSpot(state: GameState, field: OreField, random: Random): Point |
     const angle = random() * Math.PI * 2;
     const reach = Math.sqrt(random()) * field.radius;
     const spot = { x: field.x + Math.cos(angle) * reach, z: field.z + Math.sin(angle) * reach };
+    if (!isOpenGround(state.planet, spot)) continue;
     const crowded =
       state.deposits.some((d) => distance(d, spot) < ORE_FALL.spacing) ||
       state.falls.some((f) => distance(f, spot) < ORE_FALL.spacing) ||
