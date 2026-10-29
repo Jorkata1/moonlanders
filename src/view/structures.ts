@@ -104,7 +104,7 @@ export interface LanderModel {
 export function landerModel(): LanderModel {
   const root = new Group();
   const body = new Group();
-  const plating = surface({ map: platingTexture("pod", "#facc15", 8, 3), roughness: 0.38, reflective: true, envMapIntensity: 0.45 });
+  const plating = surface({ map: platingTexture("pod", "#f2f4f8", 8, 3), roughness: 0.38, reflective: true, envMapIntensity: 0.45 });
   body.add(lathe([[0, 0.3], [0.8, 0.32], [0.82, 0.42], [0.62, 1.5], [0.36, 1.78], [0, 1.8]], plating, 32));
   body.add(lathe([[0, 0.22], [0.66, 0.24], [0.84, 0.34], [0.8, 0.42], [0, 0.42]], surface({ color: 0x3a2f2a, roughness: 0.9 }), 32));
   body.add(mesh(new CylinderGeometry(0.78, 0.81, 0.12, 32), FINISH.orange(), 0, 0.62, 0));
