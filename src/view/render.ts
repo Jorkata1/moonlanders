@@ -46,6 +46,32 @@ const GRADE = {
     }`,
 };
 
+/** True for things that should cast no ambient occlusion: smoke sprites, particles, lines and glass. */
+function isSeeThrough(object: Object3D): boolean {
+  if (object instanceof Sprite || object instanceof Points || (object as { isLine?: boolean }).isLine === true) return true;
+  if (!(object instanceof Mesh)) return false;
+  const material = Array.isArray(object.material) ? object.material[0] : object.material;
+  return (material as Material | undefined)?.transparent === true;
+}
+
+/**
+ * GTAO draws the scene into a depth/normal buffer with an override material, which would turn
+ * smoke puffs and glass into solid black blocks; hide them while it does.
+ */
+function ignoreSeeThrough(pass: GTAOPass, scene: Scene): void {
+  const visible = new Map<Object3D, boolean>();
+  pass.overrideVisibility = () => {
+    scene.traverse((object) => {
+      visible.set(object, object.visible);
+      if (isSeeThrough(object)) object.visible = false;
+    });
+  };
+  pass.restoreVisibility = () => {
+    for (const [object, shown] of visible) object.visible = shown;
+    visible.clear();
+  };
+}
+
 export interface RenderPipeline {
   readonly renderer: WebGLRenderer;
   render(): void;
@@ -85,6 +111,7 @@ export function createRenderPipeline(canvas: HTMLCanvasElement, scene: Scene, ca
     const ao = new GTAOPass(scene, camera, 1, 1);
     ao.updateGtaoMaterial({ radius: 1.8, distanceExponent: 1.4, thickness: 2.5, scale: 2.2, samples: 16 });
     ao.blendIntensity = 1;
+    ignoreSeeThrough(ao, scene);
     composer.addPass(ao);
     aoPass = ao;
     bloomPass = new UnrealBloomPass(new Vector2(1, 1), BLOOM.strength, BLOOM.radius, BLOOM.threshold);
