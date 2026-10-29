@@ -1,4 +1,4 @@
-import { CatmullRomCurve3, Vector3, type Object3D } from "three";
+import { CatmullRomCurve3, Object3D, Quaternion, Vector3 } from "three";
 import type { SpaceSet } from "./view/spaceSet";
 
 export interface CameraShot {
@@ -6,7 +6,7 @@ export interface CameraShot {
   target: Vector3;
 }
 
-/** What a prop is, which decides when it appears: crash debris at once, the kit after the astronaut is up. */
+/** What a prop is, which decides when it appears: crash debris and the dome are already standing; the rest of the kit unfolds once the astronaut is up. */
 export type DropKind = "dome" | "station" | "decor" | "cable" | "pad" | "debris";
 
 export interface DropProp {
@@ -58,6 +58,7 @@ const T = {
   spark: 1.2,
   blast: 3.0,
   eject: 4.6,
+  tumble: 6.0,
   close: 7.6,
   ground: 8.6,
   wake: 9.2,
@@ -69,13 +70,31 @@ const T = {
 } as const;
 const CAPTION_TIMES = [0.4, T.eject, 10.6] as const;
 const CAPTION_GAP = [T.close - 0.4, 10.6] as const;
-const UNFOLD: Readonly<Record<DropKind, number>> = { debris: 0, dome: 13.0, station: 13.5, decor: 13.9, cable: 14.4, pad: 14.8 };
+const UNFOLD: Readonly<Record<DropKind, number>> = { debris: 0, dome: 0, station: 13.5, decor: 13.9, cable: 14.4, pad: 14.8 };
 const STAGGER_SECONDS = 0.12;
 const GROW_SECONDS = 0.55;
 const BLUR_PX = 10;
 const SHIP_START_ROTATION = new Vector3(0.9, 0.3, -0.5);
-/** The pod is flung toward the camera side; the hull tumbles down toward the Moon. */
-const POD_VELOCITY = new Vector3(1.1, -0.55, 1.3);
+/** The pod docks this far from the hull's axis (hull radius plus the pod's own) and this high up it. */
+const DOCK_OFFSET = 2.0;
+const DOCK_HEIGHT = 1.7;
+/** Ejection speed, and how long after it the pod's engine lights. */
+const POD_KICK = 4;
+const POD_IGNITION = 0.6;
+/** Screen-right in the opening shot (across the view, never toward the lens), so the pod flies out to the right. */
+const EJECT_TOWARD = new Vector3(1, 0, -0.45);
+/** How far right of the hull the opening shot drifts, to keep the docked pod in frame. */
+const OPENING_AIM = new Vector3(1.2, 0, 0);
+
+/** The flank of the hull (in its own space, across its axis) that faces where the pod should fly. */
+function dockDirection(): Vector3 {
+  const start = new Object3D();
+  start.rotation.set(SHIP_START_ROTATION.x, SHIP_START_ROTATION.y, SHIP_START_ROTATION.z);
+  start.updateMatrixWorld();
+  const local = start.worldToLocal(EJECT_TOWARD.clone());
+  local.y = 0;
+  return local.normalize();
+}
 
 function clamp01(t: number): number {
   return Math.min(1, Math.max(0, t));
@@ -100,6 +119,12 @@ export function createIntro(options: IntroOptions): Intro {
   const fired = new Set<IntroBeat>();
   const shot: CameraShot = { position: new Vector3(), target: new Vector3() };
   const podRelease = new Vector3();
+  const podSide = new Vector3();
+  const podSpin = new Quaternion();
+  const heading = new Vector3();
+  const dockSide = dockDirection();
+  // Beside the hull, clear of it and of the drive ring below.
+  const dock = dockSide.clone().multiplyScalar(DOCK_OFFSET).setY(DOCK_HEIGHT);
   const moonward = space.moonCenter.clone().normalize();
   const counts = new Map<DropKind, number>();
   const schedule = options.props.map((prop) => {
@@ -110,7 +135,7 @@ export function createIntro(options: IntroOptions): Intro {
 
   const scaled = (target: Vector3, offset: Vector3) => target.clone().add(offset.multiplyScalar(options.distanceScale));
   const hero = options.hero;
-  const closeShot: CameraShot = { position: scaled(hero, new Vector3(2.0, 1.3, 3.4)), target: hero.clone().add(new Vector3(-0.5, 0.3, -0.5)) };
+  const closeShot: CameraShot = { position: scaled(hero, new Vector3(3.0, 1.5, 2.4)), target: hero.clone().add(new Vector3(-0.3, 0.3, 0.6)) };
   // The crane rises straight up first so it clears the dome, then swings round to the crash smoke.
   const lift = closeShot.position.clone().add(new Vector3(0.5, 5, 1.5));
   const revealTarget = options.crash.clone().add(new Vector3(0, 6, 0));
@@ -127,21 +152,36 @@ export function createIntro(options: IntroOptions): Intro {
   function placeShip(): void {
     const { ship, pod } = space;
     const fall = Math.max(0, time - T.blast);
-    ship.position.copy(moonward).multiplyScalar(0.35 * fall * fall).add(new Vector3(0, Math.sin(time * 0.8) * 0.05, 0));
-    ship.rotation.set(SHIP_START_ROTATION.x + fall * 0.35, SHIP_START_ROTATION.y + fall * 0.2, SHIP_START_ROTATION.z - fall * 0.6);
-    const spark = clamp01((time - T.spark) / (T.blast - T.spark));
-    const blast = time >= T.blast ? Math.max(0, 1 - (time - T.blast) / 0.8) : 0;
-    space.update(time, spark, blast, time >= T.blast, time - T.blast);
+    ship.position.copy(moonward).multiplyScalar(0.35 * fall * fall);
+    heading.copy(moonward);
+    // The blowout only shudders the hull; it rolls over once the pod is clear.
+    const shudder = time >= T.blast && time < T.eject ? Math.sin(time * 38) * 0.03 * (1 - (time - T.blast) / (T.eject - T.blast)) : 0;
+    const roll = Math.max(0, time - T.tumble);
+    ship.rotation.set(SHIP_START_ROTATION.x + roll * 0.12 + shudder, SHIP_START_ROTATION.y + roll * 0.06, SHIP_START_ROTATION.z - roll * 0.18 + shudder);
+    ship.updateMatrixWorld();
+    space.update(time, {
+      spark: clamp01((time - T.spark) / (T.blast - T.spark)),
+      blast: time >= T.blast ? Math.max(0, 1 - (time - T.blast) / 0.8) : 0,
+      sinceBlast: time - T.blast,
+      podThrust: time >= T.eject + POD_IGNITION,
+      heading,
+    });
     if (time < T.eject) {
-      pod.root.visible = false;
-      podRelease.copy(ship.position).add(new Vector3(0, 1.5, 0));
+      // Docked on the hull's flank, riding along until the bolts blow.
+      pod.root.position.copy(ship.localToWorld(dock.clone()));
+      pod.root.quaternion.copy(ship.quaternion);
+      podRelease.copy(pod.root.position);
+      podSide.copy(ship.localToWorld(dockSide.clone())).sub(ship.position).normalize();
+      podSpin.copy(pod.root.quaternion);
       return;
     }
+    // Kicked straight out sideways, then drifting down toward the Moon under its own engine.
     const flight = time - T.eject;
-    pod.root.visible = true;
-    pod.root.position.copy(podRelease).addScaledVector(POD_VELOCITY, flight * (1 + flight * 0.15));
-    pod.root.rotation.set(-0.5 + flight * 0.05, flight * 0.4, 0.5 - flight * 0.1);
-    pod.flame.scale.set(1, 1 + Math.random() * 0.5, 1);
+    const kick = POD_KICK * (1 - Math.exp(-flight * 2.2)) / 2.2;
+    const burn = Math.max(0, flight - POD_IGNITION);
+    pod.root.position.copy(podRelease).addScaledVector(podSide, kick + flight * 0.5).addScaledVector(moonward, burn * burn * 0.18);
+    pod.root.quaternion.copy(podSpin);
+    pod.root.rotateZ(-flight * 0.08);
   }
 
   function spaceShot(): void {
@@ -149,22 +189,23 @@ export function createIntro(options: IntroOptions): Intro {
     if (time < T.eject) {
       // A slow push past the ship toward the Moon below.
       const k = ease(time / T.eject);
-      shot.target.set(0, -2.2 + k * 2, -1).add(ship.position);
-      shot.position.set(4.5 - k * 1.2, 4 - k * 1.2, 9.5 - k * 2).multiplyScalar(options.distanceScale).add(ship.position);
+      // Aim between the hull and the docked pod so both stay in frame on a narrow screen.
+      shot.target.set(OPENING_AIM.x * k, -2.2 + k * 2, -1).add(ship.position);
+      shot.position.set(4.5 - k * 1.2, 4 - k * 1.2, 9.5 - k * 2).multiplyScalar(options.distanceScale).add(ship.position).add(new Vector3(OPENING_AIM.x * k, 0, 0));
       return;
     }
-    // Follow the pod; the burning hull falls away behind it.
-    const k = ease((time - T.eject) / 1.2);
-    const follow = pod.root.position.clone().add(new Vector3(3.4, 2.4, 7.5).multiplyScalar(options.distanceScale));
-    const before = ship.position.clone().add(new Vector3(3.3, 2.8, 7.5).multiplyScalar(options.distanceScale));
-    shot.position.lerpVectors(before, follow, k);
-    shot.target.lerpVectors(ship.position, pod.root.position.clone().add(new Vector3(-1.2, -0.8, -2.5)), k);
+    // Pull back to watch the two split: the pod drifting right, the burning hull falling away.
+    const k = ease((time - T.eject) / (T.close - T.eject));
+    const middle = ship.position.clone().lerp(pod.root.position, 0.45 + k * 0.25);
+    // Picks up exactly where the opening push ended, so the cut is seamless.
+    shot.target.lerpVectors(ship.position.clone().add(new Vector3(OPENING_AIM.x, -0.2, -1)), middle, ease((time - T.eject) / 0.8));
+    shot.position.copy(ship.position).add(new Vector3(3.3, 2.8, 7.5).multiplyScalar(options.distanceScale)).add(new Vector3(OPENING_AIM.x, 0, 0)).lerp(shot.target.clone().add(new Vector3(3.3, 2.8, 7.5).multiplyScalar(options.distanceScale * 1.6)), k);
   }
 
   function groundShot(): void {
     if (time < T.crane) {
       shot.position.copy(closeShot.position).add(new Vector3(0, (time - T.ground) * 0.06, 0));
-      shot.target.copy(closeShot.target).add(new Vector3(0, clamp01((time - T.rise) / (T.stood - T.rise)) * 0.8, 0));
+      shot.target.copy(closeShot.target).add(new Vector3(0, 0.7, -0.9).multiplyScalar(ease((time - T.rise) / (T.stood - T.rise))));
       return;
     }
     const u = ease((time - T.crane) / (T.end - T.crane));
@@ -176,7 +217,9 @@ export function createIntro(options: IntroOptions): Intro {
     for (const item of schedule) {
       const k = clamp01((time - item.at) / GROW_SECONDS);
       item.prop.object.visible = time >= T.ground && k > 0;
-      item.prop.object.scale.copy(item.scale).multiplyScalar(Math.max(0.001, k >= 1 ? 1 : spring(k)));
+      // Cables are laid out in world space, so scaling them would sweep them across the base; they just appear.
+      const grow = item.prop.kind === "cable" ? 1 : k >= 1 ? 1 : spring(k);
+      item.prop.object.scale.copy(item.scale).multiplyScalar(Math.max(0.001, grow));
     }
   }
 

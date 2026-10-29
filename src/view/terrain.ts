@@ -46,6 +46,7 @@ function flatZones(planet: PlanetDef): FlatZone[] {
     { ...planet.suitStation, radius: 2.2 },
     { ...planet.suitStation.pad, radius: 1.6 },
     { ...planet.workbench, radius: 2.2 },
+    { ...planet.podSpot, radius: 1.4 },
     { ...planet.workbench.pad, radius: 1.6 },
     { x: planet.rocket.x, z: planet.rocket.z, radius: 3.2 },
     { ...planet.rocket.pad, radius: 1.9 },

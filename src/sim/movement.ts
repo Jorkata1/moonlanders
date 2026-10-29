@@ -6,6 +6,7 @@ import { isRidgeOpen, isStormRaging, type GameState } from "./state";
 const ROCKET_RADIUS = 1.9;
 const STATION_RADIUS = 1.4;
 const DRILL_RADIUS = 1.3;
+const POD_RADIUS = 0.95;
 /** Half the ridge's thickness: a wall of big boulders the player cannot climb. */
 export const RIDGE_HALF_DEPTH = 2.3;
 const BOOST_SPEED_FACTOR = 1.35;
@@ -34,6 +35,7 @@ export function colliders(state: GameState): Circle[] {
   }
   solids.push({ x: state.planet.rocket.x, z: state.planet.rocket.z, radius: ROCKET_RADIUS });
   solids.push({ x: state.planet.suitStation.x, z: state.planet.suitStation.z, radius: STATION_RADIUS });
+  solids.push({ x: state.planet.podSpot.x, z: state.planet.podSpot.z, radius: POD_RADIUS });
   if (state.planet.builds.some((b) => b.kind === "workbench" && state.built.has(b.id))) solids.push({ x: state.planet.workbench.x, z: state.planet.workbench.z, radius: STATION_RADIUS });
   return solids;
 }

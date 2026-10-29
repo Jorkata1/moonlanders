@@ -15,7 +15,7 @@ const PORTRAIT_INTRO_DISTANCE = 1.6;
 /** The intro's wide shots see through most of the everyday haze. */
 const INTRO_HAZE = 0.4;
 /** The astronaut wakes up a step from the pod. */
-const HERO_FROM_POD = new Vector3(1.3, 0, 1.0);
+const HERO_FROM_POD = new Vector3(-0.6, 0, 1.4);
 const POD_SMOKE_SECONDS = 0.14;
 const SHAKE_DECAY = 2.5;
 
@@ -120,8 +120,8 @@ export function startIntro({ state, world, pipeline, camera, hero, fx, hud, audi
     poseHero() {
       const rise = intro.heroRise();
       hero.root.visible = rise !== null;
-      // Lying on their back, then sitting up and standing.
-      hero.root.rotation.x = rise === null ? 0 : -(1 - rise) * Math.PI * 0.47;
+      // Lying on their back (head away from the pod), then sitting up and standing.
+      hero.root.rotation.x = rise === null ? 0 : (1 - rise) * Math.PI * 0.47;
       if (rise === null || rise >= 1) return;
       hero.root.position.y += (1 - rise) * 0.3;
     },

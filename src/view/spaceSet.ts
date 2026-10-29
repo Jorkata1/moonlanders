@@ -1,5 +1,7 @@
 import {
   AdditiveBlending,
+  ConeGeometry,
+  DoubleSide,
   BufferGeometry,
   CatmullRomCurve3,
   Color,
@@ -31,18 +33,27 @@ const ARC_COUNT = 9;
 const DEBRIS_COUNT = 10;
 
 /** The opening in orbit: its own scene with the Moon below, Earth far off, the stricken rocket and the escape pod. */
+export interface SpaceMoment {
+  /** How badly the jump drive arcs, 0..1. */
+  readonly spark: number;
+  /** The blowout flash, 0..1. */
+  readonly blast: number;
+  /** Seconds since the blowout (negative before it): debris flies and the hull trails fire. */
+  readonly sinceBlast: number;
+  /** Whether the pod's engine is firing. */
+  readonly podThrust: boolean;
+  /** Direction the hull is moving, for its fire trail to stream behind it. */
+  readonly heading: Vector3;
+}
+
 export interface SpaceSet {
   readonly scene: Scene;
   /** The rocket hull; it lives in this scene, not the world. */
   readonly ship: Group;
   readonly pod: LanderModel;
-  /** Where the Moon's surface would be hit falling from the ship, for the camera to frame. */
+  /** Centre of the Moon, for the hull to fall toward. */
   readonly moonCenter: Vector3;
-  /**
-   * `spark` 0..1 is how badly the jump drive arcs, `blast` 0..1 the blowout flash, `burning`
-   * whether the hull trails fire, `debris` seconds since the blowout (negative before it).
-   */
-  update(time: number, spark: number, blast: number, burning: boolean, debris: number): void;
+  update(time: number, moment: SpaceMoment): void;
 }
 
 function moonTexture(): CanvasTexture {
@@ -110,18 +121,68 @@ function arcs(): Mesh[] {
   });
 }
 
-/** A trail of puffs from `from` along `direction`, growing and fading. */
-function plume(from: Vector3, direction: Vector3, count: number, length: number, color: number, size: number, opacity: number): Group {
-  const group = new Group();
-  for (let i = 0; i < count; i += 1) {
-    const t = i / (count - 1);
-    const material = new SpriteMaterial({ map: puffTexture(), color, transparent: true, opacity: opacity * (1 - t * 0.8), depthWrite: false, blending: AdditiveBlending });
+/** Bright at the nozzle, orange in the middle, gone at the tip; drawn bottom-up so uv 0 is the nozzle. */
+function flameTexture(): CanvasTexture {
+  return canvasTexture("space-flame", 32, 128, (ctx) => {
+    const gradient = ctx.createLinearGradient(0, 128, 0, 0);
+    gradient.addColorStop(0, "rgba(255,255,255,1)");
+    gradient.addColorStop(0.18, "rgba(255,236,170,0.95)");
+    gradient.addColorStop(0.5, "rgba(255,140,50,0.6)");
+    gradient.addColorStop(1, "rgba(255,90,30,0)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 32, 128);
+  });
+}
+
+export interface Flame {
+  readonly root: Group;
+  /** Flicker and show or hide the flame. */
+  set(on: boolean, time: number): void;
+}
+
+/** A soft rocket flame along -y from its origin: an outer glow and a white-hot core, both fading to nothing. */
+export function flame(length: number, radius: number): Flame {
+  const root = new Group();
+  const material = (opacity: number) => new MeshBasicMaterial({ map: flameTexture(), transparent: true, opacity, blending: AdditiveBlending, depthWrite: false, side: DoubleSide });
+  const outer = new Mesh(new ConeGeometry(radius, length, 20, 1, true).rotateX(Math.PI).translate(0, -length / 2, 0), material(0.85));
+  const core = new Mesh(new ConeGeometry(radius * 0.45, length * 0.55, 16, 1, true).rotateX(Math.PI).translate(0, (-length * 0.55) / 2, 0), material(1));
+  root.add(outer, core);
+  return {
+    root,
+    set(on, time) {
+      root.visible = on;
+      if (!on) return;
+      const flicker = 1 + Math.sin(time * 41) * 0.06 + Math.sin(time * 67) * 0.05;
+      outer.scale.set(1, flicker, 1);
+      core.scale.set(1, 2 - flicker, 1);
+    },
+  };
+}
+
+const TRAIL_PUFFS = 22;
+
+/** Fire, then smoke, streaming behind the falling hull in world space. */
+function fireTrail(scene: Scene): (from: Vector3, back: Vector3, age: number) => void {
+  const puffs = Array.from({ length: TRAIL_PUFFS }, (_, i) => {
+    const hot = i < 7;
+    const material = new SpriteMaterial({ map: puffTexture(), color: hot ? 0xffa64a : 0x8d8894, transparent: true, depthWrite: false, opacity: 0 });
+    if (hot) material.blending = AdditiveBlending;
     const sprite = new Sprite(material);
-    sprite.position.copy(from).addScaledVector(direction, t * length).add(new Vector3(Math.sin(i * 2.3) * t * 0.5, 0, Math.cos(i * 1.7) * t * 0.5));
-    sprite.scale.setScalar(size * (0.6 + t * 2.2));
-    group.add(sprite);
-  }
-  return group;
+    sprite.visible = false;
+    scene.add(sprite);
+    return sprite;
+  });
+  return (from, back, age) => {
+    puffs.forEach((puff, i) => {
+      puff.visible = age > 0;
+      if (!puff.visible) return;
+      const t = i / (TRAIL_PUFFS - 1);
+      const spacing = 0.35 + Math.min(age, 4) * 0.12;
+      puff.position.copy(from).addScaledVector(back, i * spacing).add(new Vector3(Math.sin(i * 2.3 + age) * t * 0.4, Math.cos(i * 1.7) * t * 0.3, 0));
+      puff.scale.setScalar(0.9 + t * 3.2);
+      puff.material.opacity = Math.min(1, age * 2) * (i < 7 ? 0.9 - t * 1.2 : 0.55 * (1 - t));
+    });
+  };
 }
 
 export function createSpaceSet(): SpaceSet {
@@ -143,12 +204,13 @@ export function createSpaceSet(): SpaceSet {
   const ship = rocket.ship;
   ship.removeFromParent();
   ship.position.set(0, 0, 0);
-  rocket.flame.visible = true;
-  rocket.flame.scale.set(1.4, 2.2, 1.4);
+  rocket.flame.visible = false;
+  const engine = flame(3.2, 0.55);
+  engine.root.position.y = -0.6;
+  ship.add(engine.root);
   const arcMeshes = arcs();
   ship.add(...arcMeshes);
-  const fire = plume(new Vector3(0, -1.4, 0), new Vector3(0, -1, 0), 14, 9, 0xff8a3a, 1.1, 0.85);
-  ship.add(fire);
+  const trail = fireTrail(scene);
   const flash = new Sprite(new SpriteMaterial({ map: puffTexture(), color: 0xbff4ff, transparent: true, opacity: 0, depthWrite: false, blending: AdditiveBlending }));
   flash.position.set(0, 0.8, 0);
   ship.add(flash);
@@ -158,36 +220,44 @@ export function createSpaceSet(): SpaceSet {
   const debris = Array.from({ length: DEBRIS_COUNT }, (_, i) => {
     const piece = box(0.2 + (i % 3) * 0.1, 0.04, 0.16, surface({ color: i % 4 === 0 ? 0xff7a1f : 0xe8ebf0, roughness: 0.5 }), 0, 0, 0, 0.01);
     const angle = (i / DEBRIS_COUNT) * Math.PI * 2;
-    piece.userData.velocity = new Vector3(Math.sin(angle) * 1.6, 0.6 + Math.cos(i * 1.3) * 0.8, Math.cos(angle) * 1.6);
+    // Thrown outward from just outside the hull, so nothing starts inside it.
+    piece.userData.direction = new Vector3(Math.sin(angle), 0.35 + Math.cos(i * 1.3) * 0.3, Math.cos(angle)).normalize();
+    piece.userData.speed = 1.4 + (i % 4) * 0.35;
     piece.visible = false;
     scene.add(piece);
     return piece;
   });
 
   const pod = landerModel();
-  pod.flame.visible = true;
-  pod.root.visible = false;
+  pod.flame.visible = false;
+  const podEngine = flame(2.2, 0.38);
+  podEngine.root.position.y = 0.2;
+  pod.root.add(podEngine.root);
   scene.add(pod.root);
+  const drive = new Vector3();
 
   return {
     scene,
     ship,
     pod,
     moonCenter,
-    update(time, spark, blast, burning, debrisAge) {
+    update(time, { spark, blast, sinceBlast, podThrust, heading }) {
       arcMeshes.forEach((arc, i) => {
         // Arcs crackle on and off; the worse the drive, the more of them at once.
         arc.visible = spark > 0 && Math.sin(time * (23 + i * 7) + i * 2.1) > 1 - spark * 1.6;
       });
       flash.material.opacity = blast;
       flash.scale.setScalar(2 + blast * 9);
-      fire.visible = burning;
-      rocket.flame.visible = !burning;
+      engine.set(sinceBlast < 0, time);
+      podEngine.set(podThrust, time);
+      ship.localToWorld(drive.set(0, 0.75, 0));
+      trail(drive, heading.clone().negate(), sinceBlast);
       for (const piece of debris) {
-        piece.visible = debrisAge > 0;
+        piece.visible = sinceBlast > 0;
         if (!piece.visible) continue;
-        piece.position.copy(ship.position).addScaledVector(piece.userData.velocity as Vector3, debrisAge).add(new Vector3(0, 0.8, 0));
-        piece.rotation.set(debrisAge * 4, debrisAge * 3, 0);
+        const direction = piece.userData.direction as Vector3;
+        piece.position.copy(drive).addScaledVector(direction, 1.4 + (piece.userData.speed as number) * sinceBlast);
+        piece.rotation.set(sinceBlast * 4, sinceBlast * 3, 0);
       }
     },
   };

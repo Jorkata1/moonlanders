@@ -100,7 +100,7 @@ export interface LanderModel {
   flame: Mesh;
 }
 
-/** The escape pod: a scorched heat shield, a conical crew capsule with a porthole and hatch, thrusters, a chute housing and landing legs; it stays parked in the dome. */
+/** The escape pod: a scorched heat shield, a conical crew capsule with a porthole and hatch, thrusters, a chute housing and landing legs; it stays parked beside the dome. */
 export function landerModel(): LanderModel {
   const root = new Group();
   const body = new Group();

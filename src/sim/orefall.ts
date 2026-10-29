@@ -34,6 +34,7 @@ function reservedSpots(planet: PlanetDef): Array<Point & { radius: number }> {
     planet.workbench.pad,
     planet.rocket,
     planet.rocket.pad,
+    planet.podSpot,
     ...planet.machines.flatMap((m) => [m, m.inputPad, m.outputPad]),
     ...planet.builds.flatMap((b) => [b, b.site]),
   ];
