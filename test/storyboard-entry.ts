@@ -200,7 +200,7 @@ scene.add(lander.root);
 const hero = astronautModel();
 scene.add(hero.root);
 const props = world.introProps();
-const crashSmoke = plume(world.groundAt(MOON.rocket).add(new Vector3(0, 3, 0)), new Vector3(0.25, 1, 0.1).normalize(), 26, 24, 0x5c5862, 2.2, false, 0.8);
+const crashSmoke = plume(world.groundAt(MOON.rocket).add(new Vector3(0, 3, 0)), new Vector3(0.25, 1, 0.1).normalize(), 30, 26, 0xa8a4b4, 2.6, false, 0.55);
 const fallingTrail = new Group();
 scene.add(crashSmoke, fallingTrail);
 enableShadows(scene);
@@ -352,7 +352,7 @@ const frames: Record<string, () => void> = {
     stageWorld({ kit: true, podY: 0, podFlame: false, hero: "standing", rocket: "crashed", smoke: true });
     attachToCamera(null);
     const at = hero.root.position.clone();
-    look(at.clone().add(new Vector3(-2, 12, 13)), at.clone().add(new Vector3(-3, 0, -14)), 50);
+    look(at.clone().add(new Vector3(-3, 9, 9)), at.clone().add(new Vector3(-7, 3, -22)), 50);
   },
 };
 
