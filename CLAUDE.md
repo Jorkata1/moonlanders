@@ -74,10 +74,11 @@ src/
     actors.ts         per-frame player/robot animation (robot looks per stage), drill beams
     fx.ts             flying items, sparks, rock chips, dust, falling ore meteorites, floating text
     bake.ts           merges static meshes per material to cut draw calls
+    spaceSet.ts       the intro's orbit scene: the Moon, Earth, stars, the arcing rocket, debris and the escape pod
     render.ts         renderer, ACES tone mapping, ambient occlusion, bloom, colour grade and vignette, shadows, reflections
   game.ts             main loop: input → step → feedback → view sync → render; tutorial, launch
-  gameIntro.ts        wires the crash-landing intro into the game (camera, landings, smoke, shake)
-  intro.ts            the crash-landing cinematic: the burning rocket comes down beyond the ridge, the escape pod lands, the kit unfolds
+  gameIntro.ts        runs the intro inside the game: camera, scene switching, eyelids and blur, the astronaut's pose, pod smoke, sounds, shake, vibration
+  intro.ts            the intro timeline: in orbit the jump drive blows out and the pod breaks away; eyes close, then the astronaut wakes beside the pod, stands, and the camera rises over the unfolding base to the crash smoke
   feedback.ts         maps SimEvents to effects, sounds and toasts
   hud.ts / page.html  DOM HUD: active order chip, backpack list with Drop, oxygen, missions, coach card, intro overlay
   hudPanel.ts         renders the workbench, suit-station and dock panels (cards with material cost chips, on/off toggle)
@@ -98,6 +99,7 @@ test/
   harness.ts          renders the real scene after N bot-seconds, for visual review in a headless browser
   *-entry.ts          test builds that spawn the player somewhere specific (via test/build-entry.mjs)
   stepped-entry.ts    review build: fixed 1/30 s frames that a headless browser can hold for exact screenshots; `?spawn=x,z` picks where the player starts
+  storyboard-entry.ts stages single frames of intro ideas (frame(name)) for review before building them
   showcase-entry.ts   renders one model at a time (show(name, view)) for close-up review of models
 ```
 
