@@ -62,3 +62,4 @@ export const SUIT_WHITE = 0xf3f5f8;
 export const STEEL_DARK = 0x3a3f4b;
 export const STEEL_MID = 0x6b7280;
 export const HAZARD_YELLOW = 0xfacc15;
+export const ROCKET_RED = 0xdc2626;

@@ -1,6 +1,6 @@
 import { BoxGeometry, ConeGeometry, CylinderGeometry, Group, Mesh, SphereGeometry, type MeshBasicMaterial } from 'three';
 import type { Vec2 } from '../config/planets/types';
-import { HAZARD_YELLOW, STEEL_DARK, STEEL_MID, SUIT_WHITE, glow, surface, uniqueGlow } from './materials';
+import { HAZARD_YELLOW, ROCKET_RED, STEEL_DARK, STEEL_MID, glow, surface, uniqueGlow } from './materials';
 
 const ROCKET_HEIGHT = 4.2;
 
@@ -14,12 +14,12 @@ export class RocketMesh {
   private readonly readyLight: MeshBasicMaterial;
 
   constructor(position: Vec2, accent: number) {
-    const white = surface(SUIT_WHITE);
+    const hull = surface(ROCKET_RED);
     const pad = new Mesh(new CylinderGeometry(1.9, 2.1, 0.3, 10), surface(STEEL_DARK));
     pad.position.y = 0.15;
     pad.receiveShadow = true;
 
-    const body = new Mesh(new CylinderGeometry(0.75, 0.85, ROCKET_HEIGHT * 0.62, 12), white);
+    const body = new Mesh(new CylinderGeometry(0.75, 0.85, ROCKET_HEIGHT * 0.62, 12), hull);
     body.position.y = 1.2 + ROCKET_HEIGHT * 0.31;
     const nose = new Mesh(new ConeGeometry(0.75, ROCKET_HEIGHT * 0.32, 12), surface(accent));
     nose.position.y = 1.2 + ROCKET_HEIGHT * 0.62 + ROCKET_HEIGHT * 0.16;
