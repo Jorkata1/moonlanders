@@ -273,6 +273,15 @@ function stageWorld(opts: { kit: boolean; podY: number; podFlame: boolean; hero:
 }
 
 const frames: Record<string, () => void> = {
+  smoke: () => {
+    stageWorld({ kit: true, podY: 0, podFlame: false, hero: "hidden", rocket: "crashed", smoke: false });
+    for (let i = 0; i < 90; i += 1) world.sync(state, STEP, 3 + i * STEP);
+    const at = world.groundAt(MOON.rocket);
+    let shown = 0;
+    world.rocket.root.traverse((o) => { if ((o as { isSprite?: boolean }).isSprite && o.visible) shown += 1; });
+    console.log("rocket sprites", shown);
+    look(at.clone().add(new Vector3(8, 6, 14)), at.clone().add(new Vector3(0, 4, 0)), 50);
+  },
   // A: From orbit.
   "orbit-1": () => {
     useSpace(true);

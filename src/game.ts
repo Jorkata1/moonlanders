@@ -7,7 +7,7 @@ import type { Hud } from "./hud";
 import { activePanel, orderFromPanel, toggleFromPanel } from "./panels";
 import type { MoveControls } from "./input";
 import { startIntro } from "./gameIntro";
-import type { Intro } from "./intro";
+import type { IntroDirector } from "./gameIntro";
 import type { Quality } from "./quality";
 import { dropItems } from "./sim/inventory";
 import { step } from "./sim/step";
@@ -26,8 +26,6 @@ import { buildWorld } from "./view/world";
 const MAX_FRAME_SECONDS = 0.1;
 const CAMERA_OFFSET = new Vector3(0, 11.5, 8.2);
 const PORTRAIT_ZOOM = 1.45;
-/** The intro's wide shots see through most of the everyday haze. */
-const INTRO_HAZE = 0.4;
 const COMPACT_QUERY = "(max-width: 760px), (max-height: 480px)";
 const LAUNCH_SECONDS = 4.2;
 const LAUNCH_DONE = -2;
@@ -96,7 +94,7 @@ export function createGame(canvas: HTMLCanvasElement, state: GameState, quality:
   const cameraTarget = new Vector3(state.player.x, 0, state.player.z);
   let drillDust = 0;
   let lastWarmup = 0;
-  let intro: Intro | null = null;
+  let intro: IntroDirector | null = null;
 
   const feedback = createFeedback(state, world, playerView, robots, drones, fx, hud, audio, {
     save: callbacks.onSave,
@@ -112,7 +110,7 @@ export function createGame(canvas: HTMLCanvasElement, state: GameState, quality:
 
   if (options.playIntro) {
     const portrait = window.innerWidth < window.innerHeight;
-    intro = startIntro({ state, world, lander, fx, audio, cameraOffset: CAMERA_OFFSET.clone().multiplyScalar(portrait ? PORTRAIT_ZOOM : 1), portrait, shake: (amount) => (shake = Math.max(shake, amount)) });
+    intro = startIntro({ state, world, pipeline, camera, hero: playerView.model, fx, hud, audio, cameraOffset: CAMERA_OFFSET.clone().multiplyScalar(portrait ? PORTRAIT_ZOOM : 1), portrait });
   }
 
   function resize(): void {
@@ -164,21 +162,12 @@ export function createGame(canvas: HTMLCanvasElement, state: GameState, quality:
 
   function updateIntro(dt: number): boolean {
     if (!intro || intro.done()) return false;
-    const shot = intro.update(dt);
-    world.storm.setClarity(INTRO_HAZE);
-    hud.setIntroCaption(intro.caption());
-    playerView.model.root.visible = intro.landed();
-    if (shot) {
-      camera.position.copy(shot.position);
-      camera.lookAt(shot.target);
-    }
-    if (!intro.done()) return true;
+    if (intro.update(dt)) return true;
     finishIntro();
     return false;
   }
 
   function finishIntro(): void {
-    world.storm.setClarity(1);
     hud.showIntro(false);
     hud.setIntroCaption(null);
     playerView.model.root.visible = true;
@@ -221,7 +210,7 @@ export function createGame(canvas: HTMLCanvasElement, state: GameState, quality:
     updateLaunch(dt);
     world.sync(state, dt, time);
     playerView.sync(state, dt, time);
-    if (intro && !intro.landed()) playerView.model.root.visible = false;
+    if (intro && !intro.done()) intro.poseHero();
     robots.sync(state, dt, time);
     drones.sync(state, dt, time);
     fx.update(dt);

@@ -128,7 +128,8 @@ export function rocketModel(): RocketModel {
   const cage = scaffold();
   root.add(tower, cage);
   // Smoke still curls from the engine bay after the crash.
-  const smoke = emitter(root, 0.2, 1.4, 0.4, 0x6f6a72, 7, 2.6);
+  // A tall column the player can see from the base, until the jump drive is fixed.
+  const smoke = emitter(root, 0.2, 1.6, 0.4, 0xb4b0bf, 24, 12, 3.2, 0.8);
   root.traverse((object) => {
     if (object instanceof Mesh && object !== flame) object.castShadow = true;
   });

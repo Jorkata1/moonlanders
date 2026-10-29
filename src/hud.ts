@@ -39,6 +39,8 @@ export interface Hud {
   showCoach(card: CoachCard | null): void;
   showIntro(visible: boolean): void;
   setIntroCaption(text: string | null): void;
+  /** Eyelids over the intro: 1 fully open, 0 closed; `blur` softens the view while waking, in pixels. */
+  setIntroEyes(open: number, blur: number): void;
   onOrder(handler: (key: string, id: string) => void): void;
   onToggle(handler: (key: string) => void): void;
   onDrop(handler: (item: ItemId) => void): void;
@@ -69,6 +71,8 @@ export function createHud(): Hud {
   const coachOk = requireElement<HTMLButtonElement>("coach-ok");
   const intro = requireElement<HTMLElement>("intro");
   const introCaption = requireElement<HTMLElement>("intro-caption");
+  const lids = [requireElement<HTMLElement>("lid-top"), requireElement<HTMLElement>("lid-bottom")];
+  const view = requireElement<HTMLElement>("view");
   let orderHandler: (key: string, id: string) => void = () => undefined;
   let toggleHandler: (key: string) => void = () => undefined;
   const panelView = createPanelView((key, id) => orderHandler(key, id), (key) => toggleHandler(key));
@@ -209,6 +213,11 @@ export function createHud(): Hud {
     showIntro(visible) {
       intro.hidden = !visible;
       if (visible) requireElement<HTMLButtonElement>("intro-skip").focus();
+    },
+    setIntroEyes(open, blur) {
+      const closed = `${((1 - Math.min(1, Math.max(0, open))) * 50).toFixed(2)}vh`;
+      for (const lid of lids) lid.style.height = closed;
+      view.style.filter = blur > 0.2 ? `blur(${blur.toFixed(1)}px)` : "";
     },
     setIntroCaption(text) {
       introCaption.hidden = text === null;

@@ -41,6 +41,9 @@
 .letterbox { position: absolute; left: 0; right: 0; height: 11vh; background: #000; }
 .letterbox--top { top: 0; animation: bar-top 600ms ease-out; }
 .letterbox--bottom { bottom: 0; animation: bar-bottom 600ms ease-out; }
+.lid { position: absolute; left: 0; right: 0; height: 0; background: #000; }
+.lid--top { top: 0; border-radius: 0 0 50% 50% / 0 0 18% 18%; }
+.lid--bottom { bottom: 0; border-radius: 50% 50% 0 0 / 18% 18% 0 0; }
 #intro-caption { position: absolute; left: 50%; bottom: calc(11vh + 24px); transform: translateX(-50%); width: min(640px, calc(100% - 32px)); margin: 0; text-align: center; font-family: var(--font-display); font-weight: 600; font-size: clamp(18px, 2.4vw, 26px); line-height: 1.35; text-wrap: balance; color: #fff; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8); }
 #intro-caption.is-new { animation: caption-in 700ms ease-out; }
 #intro-skip { position: absolute; right: var(--gutter-right); bottom: calc(env(safe-area-inset-bottom, 0px) + 2.5vh); pointer-events: auto; min-height: 40px; padding: 0 16px; background: rgba(14, 18, 36, 0.6); color: var(--text); }

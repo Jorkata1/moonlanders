@@ -76,6 +76,8 @@ export interface RenderPipeline {
   readonly renderer: WebGLRenderer;
   render(): void;
   resize(width: number, height: number): void;
+  /** Draw a different scene from now on (the intro's orbit set), or the original one again with null. */
+  setScene(next: Scene | null): void;
   /** Give every material flagged `userData.reflective` the studio reflection map. */
   applyReflections(root: Object3D): void;
   /** Free GPU memory so another pipeline can take over the same canvas. */
@@ -103,11 +105,14 @@ export function createRenderPipeline(canvas: HTMLCanvasElement, scene: Scene, ca
   let composer: EffectComposer | null = null;
   let bloomPass: UnrealBloomPass | null = null;
   let aoPass: GTAOPass | null = null;
+  let renderPass: RenderPass | null = null;
+  let current = scene;
 
   if (quality.bloom) {
     const target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: quality.msaaSamples });
     composer = new EffectComposer(renderer, target);
-    composer.addPass(new RenderPass(scene, camera));
+    renderPass = new RenderPass(scene, camera);
+    composer.addPass(renderPass);
     const ao = new GTAOPass(scene, camera, 1, 1);
     ao.updateGtaoMaterial({ radius: 1.8, distanceExponent: 1.4, thickness: 2.5, scale: 2.2, samples: 16 });
     ao.blendIntensity = 1;
@@ -137,7 +142,15 @@ export function createRenderPipeline(canvas: HTMLCanvasElement, scene: Scene, ca
     renderer,
     render() {
       if (composer) composer.render();
-      else renderer.render(scene, camera);
+      else renderer.render(current, camera);
+    },
+    setScene(next) {
+      current = next ?? scene;
+      if (renderPass) renderPass.scene = current;
+      if (aoPass) {
+        aoPass.scene = current;
+        ignoreSeeThrough(aoPass, current);
+      }
     },
     resize(width, height) {
       renderer.setSize(width, height, false);

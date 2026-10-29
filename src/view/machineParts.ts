@@ -63,8 +63,8 @@ export function beltMaterial(): MeshStandardMaterial {
   return new MeshStandardMaterial({ map, roughness: 0.8 });
 }
 
-/** Rising puffs (smoke, steam) that loop while a machine works. */
-export function emitter(root: Group, x: number, y: number, z: number, color: number, count: number, rise: number) {
+/** Rising puffs (smoke, steam) that loop while a machine works; `size` scales the puffs and their drift, `opacity` their density. */
+export function emitter(root: Group, x: number, y: number, z: number, color: number, count: number, rise: number, size = 1, opacity = 0.45) {
   const puffs: Sprite[] = [];
   const holder = new Group();
   holder.userData.dynamic = true;
@@ -80,9 +80,9 @@ export function emitter(root: Group, x: number, y: number, z: number, color: num
     strength += ((on ? 1 : 0) - strength) * Math.min(1, dt * 2);
     puffs.forEach((puff, i) => {
       const phase = (time * 0.45 + i / count) % 1;
-      puff.position.set(x + Math.sin(phase * 5 + i) * 0.15 * phase, y + phase * rise, z + Math.cos(phase * 4 + i) * 0.1 * phase);
-      puff.scale.setScalar(0.25 + phase * 0.9);
-      puff.material.opacity = (1 - phase) * 0.45 * strength;
+      puff.position.set(x + Math.sin(phase * 5 + i) * 0.15 * phase * size, y + phase * rise, z + Math.cos(phase * 4 + i) * 0.1 * phase * size);
+      puff.scale.setScalar((0.25 + phase * 0.9) * size);
+      puff.material.opacity = (1 - phase) * opacity * strength;
     });
   };
 }
