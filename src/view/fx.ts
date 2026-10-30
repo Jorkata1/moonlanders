@@ -13,10 +13,12 @@ import {
   SpriteMaterial,
   Vector3,
   type Scene,
+  type Texture,
 } from "three";
 import { ITEMS, type ItemId } from "../config";
 import type { ItemPool } from "./items";
 import { flat, glow, mesh } from "./materials";
+import { softTexture } from "./textures";
 
 /** How long an item takes to fly between two points; exported so belts can start as it lands. */
 export const FLY_SECONDS = 0.32;
@@ -82,20 +84,14 @@ function textTexture(text: string, color: string): CanvasTexture {
   return texture;
 }
 
-function puffTexture(): CanvasTexture {
-  const canvas = document.createElement("canvas");
-  canvas.width = 64;
-  canvas.height = 64;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("2D canvas is not available for particles");
-  const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-  gradient.addColorStop(0, "rgba(255, 255, 255, 1)");
-  gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, 64, 64);
-  const texture = new CanvasTexture(canvas);
-  texture.colorSpace = SRGBColorSpace;
-  return texture;
+function puffTexture(): Texture {
+  return softTexture("fx-puff", 64, 64, (ctx) => {
+    const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gradient.addColorStop(0, "rgba(255, 255, 255, 1)");
+    gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 64, 64);
+  });
 }
 
 export interface Effects {

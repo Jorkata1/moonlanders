@@ -11,7 +11,7 @@ import type { Effects } from "./view/fx";
 import type { RenderPipeline } from "./view/render";
 import { createSpaceSet } from "./view/spaceSet";
 import { EARTH_POSITION } from "./view/terrain";
-import { canvasTexture } from "./view/textures";
+import { softTexture } from "./view/textures";
 import type { WorldView } from "./view/world";
 
 /** Cinematic shots pull back a little on portrait screens; the lens widening does the rest. */
@@ -26,7 +26,10 @@ const HERO_FROM_POD = new Vector3(-0.7, 0, 2.3);
 const DUST_MOTES = 70;
 const WORLD_UP = new Vector3(0, 1, 0);
 /** The rocket cruises this way in orbit. */
-const ORBIT_TRAVEL = new Vector3(1, 0.05, -0.3);
+const ORBIT_TRAVEL = new Vector3(1, 0, 0);
+/** Inside the pod a jolt snaps the head round rather than throwing the eye across the cabin. */
+const INSIDE_JOLT_MOVE = 0.04;
+const INSIDE_JOLT_TURN = 0.06;
 /** Space is big: the orbit set needs a far longer view than the base. */
 const SPACE_FAR = 2600;
 const POD_SMOKE_SECONDS = 0.12;
@@ -45,7 +48,7 @@ function dustMotes(scene: Scene): { update(eyes: Vector3, dt: number, on: boolea
   const positions = new Float32Array(DUST_MOTES * 3);
   const geometry = new BufferGeometry();
   geometry.setAttribute("position", new Float32BufferAttribute(positions, 3));
-  const map = canvasTexture("intro-mote", 32, 32, (ctx) => {
+  const map = softTexture("intro-mote", 32, 32, (ctx) => {
     const gradient = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
     gradient.addColorStop(0, "rgba(255,255,255,1)");
     gradient.addColorStop(1, "rgba(255,255,255,0)");
@@ -114,12 +117,18 @@ export interface IntroDirector {
 
 const BEATS: Readonly<Record<IntroBeat, { cues: readonly Cue[]; shake: number; buzz: number | number[] }>> = {
   cruise: { cues: ["rumble"], shake: 0, buzz: 0 },
-  warn: { cues: ["warning"], shake: 0.02, buzz: 15 },
+  calm: { cues: ["breath"], shake: 0, buzz: 0 },
+  warn: { cues: ["warning", "crackle"], shake: 0.02, buzz: 15 },
   alarm: { cues: ["alarm", "warning"], shake: 0.04, buzz: [20, 40, 20] },
-  blast: { cues: ["explosion", "impact"], shake: 0.9, buzz: [80, 30, 140] },
-  eject: { cues: ["pyro"], shake: 0.25, buzz: 40 },
+  pulse: { cues: ["heartbeat"], shake: 0, buzz: 0 },
+  blast: { cues: ["boom", "impact"], shake: 0.9, buzz: [80, 30, 140] },
+  eject: { cues: ["pyro"], shake: 0.5, buzz: 40 },
+  thrusters: { cues: ["rcs"], shake: 0.15, buzz: 15 },
+  steady: { cues: ["rcs"], shake: 0.1, buzz: 10 },
+  swing: { cues: ["rcs"], shake: 0.08, buzz: 10 },
   ignite: { cues: ["launch"], shake: 0.08, buzz: 20 },
-  impact: { cues: ["explosion", "thud"], shake: 0, buzz: 160 },
+  strain: { cues: ["creak"], shake: 0.12, buzz: 20 },
+  impact: { cues: ["explosion", "thud"], shake: 0.9, buzz: 160 },
   heartbeat: { cues: ["heartbeat"], shake: 0, buzz: [30, 120, 30] },
   breath: { cues: ["breath"], shake: 0, buzz: 0 },
   wake: { cues: [], shake: 0, buzz: 0 },
@@ -220,7 +229,7 @@ export function startIntro({ state, scene, world, pipeline, camera, hero, fx, hu
       const fade = intro.fade();
       hud.setIntroFade(fade.black, fade.white);
       hud.setIntroAlarm(intro.alarm());
-      hud.setIntroVisor(intro.visor(), intro.visorFog());
+      hud.setIntroVisor(intro.visor(), intro.visorFog(), intro.readout(), intro.visorCracked());
       world.storm.setClarity(INTRO_HAZE);
       if (frame) {
         show(frame.where);
@@ -229,9 +238,14 @@ export function startIntro({ state, scene, world, pipeline, camera, hero, fx, hu
         camera.up.copy(frame.up ?? WORLD_UP);
         shake = Math.max(0, shake - dt * SHAKE_DECAY);
         const jolt = shake * shake;
-        camera.position.copy(frame.shot.position).add(new Vector3((Math.random() - 0.5) * jolt, (Math.random() - 0.5) * jolt, (Math.random() - 0.5) * jolt * 0.5));
+        const move = frame.inside ? jolt * INSIDE_JOLT_MOVE : jolt;
+        camera.position.copy(frame.shot.position).add(new Vector3((Math.random() - 0.5) * move, (Math.random() - 0.5) * move, (Math.random() - 0.5) * move * 0.5));
         camera.lookAt(frame.shot.target);
         camera.rotateZ(frame.roll + (Math.random() - 0.5) * jolt * 0.04);
+        if (frame.inside) {
+          camera.rotateX((Math.random() - 0.5) * jolt * INSIDE_JOLT_TURN);
+          camera.rotateY((Math.random() - 0.5) * jolt * INSIDE_JOLT_TURN);
+        }
         const lens = fitLens(frame.fov, camera.aspect, frame.widen);
         if (camera.fov !== lens) {
           camera.fov = lens;

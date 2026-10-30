@@ -62,6 +62,7 @@
 /* The suit's readouts come up a beat after the eyes open, with a flicker. */
 .visor-readout { animation: visor-boot 1.6s steps(8, jump-end) both; animation-delay: 0.9s; }
 @keyframes visor-boot { 0% { opacity: 0; } 30% { opacity: 0.9; } 40% { opacity: 0.1; } 60% { opacity: 1; } 70% { opacity: 0.4; } 100% { opacity: 1; } }
+#intro-visor.is-intact .visor-crack { display: none; }
 .visor-crack { position: absolute; inset: 0; width: 100%; height: 100%; fill: none; }
 .visor-crack path { stroke: rgba(235, 245, 255, 0.5); stroke-width: 1px; stroke-linejoin: miter; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 1.5px rgba(200, 230, 255, 0.7)); }
 .visor-readout { position: absolute; bottom: calc(11vh + 18%); display: grid; gap: 4px; font-family: var(--font-display); font-weight: 600; font-size: clamp(11px, 1.3vw, 15px); letter-spacing: 0.12em; color: rgba(140, 236, 255, 0.85); text-shadow: 0 0 8px rgba(77, 227, 255, 0.6); }

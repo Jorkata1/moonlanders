@@ -1,5 +1,5 @@
 import { AdditiveBlending, BufferAttribute, BufferGeometry, Color, Mesh, MeshBasicMaterial, PointLight, Sprite, SpriteMaterial, Vector3, type Scene } from "three";
-import { canvasTexture } from "./textures";
+import { gradientAt, softTexture } from "./textures";
 
 const SEGMENTS = 18;
 const SIDES = 6;
@@ -26,15 +26,28 @@ export interface Beam {
   hide(dt: number): void;
 }
 
+/** White-hot in the middle, warm toward the edge, by distance from the centre (0..1). */
+const GLOW_COLORS = [
+  [0, 255, 255, 255],
+  [0.25, 255, 220, 170],
+  [1, 255, 140, 60],
+] as const;
+
 function glowMap() {
-  return canvasTexture("beam-glow", 64, 64, (ctx) => {
-    const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-    gradient.addColorStop(0, "rgba(255, 255, 255, 1)");
-    gradient.addColorStop(0.25, "rgba(255, 220, 170, 0.8)");
-    gradient.addColorStop(1, "rgba(255, 140, 60, 0)");
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 64, 64);
-  });
+  return softTexture(
+    "beam-glow",
+    64,
+    64,
+    (ctx) => {
+      const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+      gradient.addColorStop(0, "rgba(255, 255, 255, 1)");
+      gradient.addColorStop(0.25, "rgba(255, 255, 255, 0.8)");
+      gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, 64, 64);
+    },
+    (u, v) => gradientAt(GLOW_COLORS, Math.min(1, Math.hypot(u - 0.5, v - 0.5) * 2)),
+  );
 }
 
 /** A tube whose centre line is rewritten every frame; the index buffer is built once. */

@@ -1,5 +1,7 @@
 import {
   AdditiveBlending,
+  BackSide,
+  BoxGeometry,
   BufferGeometry,
   CatmullRomCurve3,
   Color,
@@ -11,25 +13,46 @@ import {
   HemisphereLight,
   IcosahedronGeometry,
   Mesh,
+  NoColorSpace,
   MeshBasicMaterial,
   MeshStandardMaterial,
   PointLight,
   Points,
   PointsMaterial,
+  RepeatWrapping,
   RingGeometry,
+  ShaderChunk,
   Scene,
+  Shape,
+  ShapeGeometry,
+  SphereGeometry,
   Sprite,
   SpriteMaterial,
   TubeGeometry,
   Vector3,
   type CanvasTexture,
+  type Texture,
 } from "three";
 import { box, surface } from "./materials";
 import { rocketModel } from "./rocket";
+import { podCabin, type CabinMoment, type PodCabin } from "./podCabin";
 import { landerModel, type LanderModel } from "./structures";
-import { canvasTexture } from "./textures";
+import { canvasTexture, gradientAt, seeded, softTexture } from "./textures";
 
-const MOON_RADIUS = 60;
+/** A big Moon close under a low orbit: from the pod its surface fills the lower view, horizon curving. */
+export const MOON_RADIUS = 120;
+export const MOON_CENTER = new Vector3(0, -134, 0);
+/** Toward the sun: low over the surface, so every crater throws a long shadow. */
+export const SUN_DIRECTION = new Vector3(0.3, 0.6, 0.75).normalize();
+/** A rocket flame's colour from the nozzle (0) to the tip (1). */
+const FLAME_COLORS = [
+  [0, 255, 255, 255],
+  [0.18, 255, 236, 170],
+  [0.5, 255, 140, 50],
+  [1, 255, 90, 30],
+] as const;
+/** The fine crater layer repeats this many times round the Moon (and half as many pole to pole). */
+const DETAIL_REPEAT = 96;
 const STAR_COUNT = 2400;
 const ARC_COUNT = 9;
 const DEBRIS_COUNT = 18;
@@ -64,6 +87,8 @@ export interface SpaceMoment {
   readonly shipVelocity: Vector3;
   /** Where the camera is, so the shockwave ring always reads as a circle, never edge-on. */
   readonly viewer: Vector3;
+  /** The pod's cabin, seen from inside. */
+  readonly cabin: CabinMoment;
 }
 
 export interface SpaceSet {
@@ -71,6 +96,12 @@ export interface SpaceSet {
   /** The rocket hull; it lives in this scene, not the world. */
   readonly ship: Group;
   readonly pod: LanderModel;
+  /** The pod's interior, placed at the astronaut's eye. */
+  readonly cabin: PodCabin;
+  /** Earth, placed by the intro where the astronaut will see it rise over the horizon. */
+  readonly earth: Mesh;
+  /** Which way, in the hull's own frame (square to its axis), the blast tears it open. */
+  aimBreach(direction: Vector3): void;
   /** Centre of the Moon, for the hull and the pod to fall toward. */
   readonly moonCenter: Vector3;
   readonly moonRadius: number;
@@ -112,8 +143,97 @@ function moonTexture(): CanvasTexture {
   });
 }
 
-function puffTexture(): CanvasTexture {
-  return canvasTexture("space-puff", 64, 64, (ctx) => {
+/**
+ * Tileable small craters and grain for the Moon's surface up close, 128 meaning "no change". Red is
+ * height for the bump map (bowls with crisp raised rims); green tints the colour (soft, darker floors),
+ * so the rims show as light and shadow rather than as painted rings.
+ */
+function craterDetail(): CanvasTexture {
+  const texture = canvasTexture("space-moon-detail", 512, 512, (ctx) => {
+    const random = seeded(19);
+    ctx.fillStyle = "#808080";
+    ctx.fillRect(0, 0, 512, 512);
+    // Soft blotches first, so the ground is never one even tone.
+    for (let i = 0; i < 40; i += 1) {
+      const x = random() * 512;
+      const y = random() * 512;
+      const r = 30 + random() * 90;
+      const blotch = ctx.createRadialGradient(x, y, 0, x, y, r);
+      const tone = random() < 0.5 ? "96,96,96" : "156,156,156";
+      blotch.addColorStop(0, `rgba(${tone},0.35)`);
+      blotch.addColorStop(1, `rgba(${tone},0)`);
+      ctx.fillStyle = blotch;
+      ctx.fillRect(0, 0, 512, 512);
+    }
+    for (let i = 0; i < 12000; i += 1) {
+      ctx.fillStyle = random() < 0.5 ? "rgba(40,40,40,0.12)" : "rgba(220,220,220,0.1)";
+      ctx.fillRect(random() * 512, random() * 512, 1 + random() * 2, 1 + random() * 2);
+    }
+    // Many tiny craters, a few big ones: shallow bowls whose rims the bump map raises.
+    // Many tiny craters and a rare big one, each a little oval and of its own depth and age: old ones
+    // shallow with soft rims, young ones deep and sharp.
+    for (let i = 0; i < 170; i += 1) {
+      const x = random() * 512;
+      const y = random() * 512;
+      const r = 1.5 + random() ** 5 * 72;
+      const squash = 0.72 + random() * 0.28;
+      const tilt = random() * Math.PI;
+      const fresh = random();
+      const floor = Math.round(64 + (1 - fresh) * 44);
+      const rim = Math.round(150 + fresh * 60);
+      const tone = Math.round(96 + (1 - fresh) * 24);
+      // Drawn nine times, shifted a tile each way, so craters wrap seamlessly over the edges.
+      for (const dx of [-512, 0, 512]) {
+        for (const dy of [-512, 0, 512]) {
+          ctx.save();
+          ctx.translate(x + dx, y + dy);
+          ctx.rotate(tilt);
+          ctx.scale(1, squash);
+          const crater = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+          // A bowl with a raised rim: the slopes are what the bump map turns into light and shadow.
+          crater.addColorStop(0, `rgba(${floor},${tone},128,${0.5 + fresh * 0.3})`);
+          crater.addColorStop(0.7, `rgba(${floor + 24},${tone + 10},128,${0.4 + fresh * 0.2})`);
+          crater.addColorStop(0.86, `rgba(${rim},126,128,${0.35 + fresh * 0.3})`);
+          crater.addColorStop(1, "rgba(128,128,128,0)");
+          ctx.fillStyle = crater;
+          ctx.beginPath();
+          ctx.arc(0, 0, r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+    }
+  });
+  texture.colorSpace = NoColorSpace;
+  texture.wrapS = RepeatWrapping;
+  texture.wrapT = RepeatWrapping;
+  texture.repeat.set(DETAIL_REPEAT, DETAIL_REPEAT / 2);
+  texture.anisotropy = 8;
+  return texture;
+}
+
+/** The Moon's material: the big colour map, with the crater layer shading it at two scales so it never looks tiled. */
+function moonMaterial(): MeshStandardMaterial {
+  const detail = craterDetail();
+  // A touch brighter than the map alone: regolith in full sun is pale grey.
+  const material = new MeshStandardMaterial({ map: moonTexture(), color: new Color().setScalar(1.3), roughness: 1, bumpMap: detail, bumpScale: 9 });
+  // The fine layer fades out with distance: far off it would only show as a repeating pattern.
+  const fade = "(1.0 - smoothstep(9.0, 30.0, length(vViewPosition)))";
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.detailMap = { value: detail };
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nuniform sampler2D detailMap;")
+      .replace("#include <bumpmap_pars_fragment>", ShaderChunk.bumpmap_pars_fragment.replace(/bumpScale \*/g, `bumpScale * ${fade} *`))
+      .replace(
+        "#include <map_fragment>",
+        `#include <map_fragment>\n\tdiffuseColor.rgb *= mix(vec3(1.0), vec3((0.6 + 0.8 * texture2D(detailMap, vBumpMapUv).g) * (0.6 + 0.8 * texture2D(detailMap, vBumpMapUv * 0.27 + vec2(0.31, 0.57)).g)), ${fade});`,
+      );
+  };
+  return material;
+}
+
+function puffTexture(): Texture {
+  return softTexture("space-puff", 64, 64, (ctx) => {
     const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
     gradient.addColorStop(0, "rgba(255,255,255,1)");
     gradient.addColorStop(1, "rgba(255,255,255,0)");
@@ -123,8 +243,8 @@ function puffTexture(): CanvasTexture {
 }
 
 /** A lumpy, billowing puff for fire and smoke, so the fireball doesn't read as soft dots. */
-function billowTexture(): CanvasTexture {
-  return canvasTexture("space-billow", 128, 128, (ctx) => {
+function billowTexture(): Texture {
+  return softTexture("space-billow", 128, 128, (ctx) => {
     let seed = 11;
     const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     for (let i = 0; i < 26; i += 1) {
@@ -180,16 +300,22 @@ function arcs(): Mesh[] {
 }
 
 /** Bright at the nozzle, orange in the middle, gone at the tip; drawn bottom-up so uv 0 is the nozzle. */
-function flameTexture(): CanvasTexture {
-  return canvasTexture("space-flame", 32, 128, (ctx) => {
-    const gradient = ctx.createLinearGradient(0, 128, 0, 0);
-    gradient.addColorStop(0, "rgba(255,255,255,1)");
-    gradient.addColorStop(0.18, "rgba(255,236,170,0.95)");
-    gradient.addColorStop(0.5, "rgba(255,140,50,0.6)");
-    gradient.addColorStop(1, "rgba(255,90,30,0)");
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 32, 128);
-  });
+function flameTexture(): Texture {
+  return softTexture(
+    "space-flame",
+    32,
+    128,
+    (ctx) => {
+      const gradient = ctx.createLinearGradient(0, 128, 0, 0);
+      gradient.addColorStop(0, "rgba(255,255,255,1)");
+      gradient.addColorStop(0.18, "rgba(255,255,255,0.95)");
+      gradient.addColorStop(0.5, "rgba(255,255,255,0.6)");
+      gradient.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, 32, 128);
+    },
+    (_u, v) => gradientAt(FLAME_COLORS, v),
+  );
 }
 
 export interface Flame {
@@ -223,8 +349,21 @@ export function flame(length: number, radius: number): Flame {
 
 const TRAIL_PUFFS = 26;
 
+/**
+ * How much of a sprite to draw near the camera: it fades out before the camera gets inside it, so
+ * fire and smoke never sit flat across the view or show up inside the pod's cabin.
+ */
+function nearFade(sprite: Sprite, viewer: Vector3): number {
+  const radius = sprite.scale.x * 0.5;
+  return clamp01((sprite.position.distanceTo(viewer) - Math.max(1.1, radius * 0.4)) / Math.max(0.6, radius * 0.8));
+}
+
+function clamp01(t: number): number {
+  return Math.min(1, Math.max(0, t));
+}
+
 /** Fire, then smoke, streaming behind the falling hull in world space. */
-function fireTrail(scene: Scene): (from: Vector3, back: Vector3, age: number) => void {
+function fireTrail(scene: Scene): (from: Vector3, back: Vector3, age: number, viewer: Vector3) => void {
   const puffs = Array.from({ length: TRAIL_PUFFS }, (_, i) => {
     const hot = i < 8;
     const material = new SpriteMaterial({ map: billowTexture(), color: hot ? 0xffa64a : 0x5d5862, transparent: true, depthWrite: false, opacity: 0 });
@@ -234,17 +373,17 @@ function fireTrail(scene: Scene): (from: Vector3, back: Vector3, age: number) =>
     scene.add(sprite);
     return sprite;
   });
-  return (from, back, age) => {
+  return (from, back, age, viewer) => {
     puffs.forEach((puff, i) => {
       puff.visible = age > 0.3;
       if (!puff.visible) return;
       const t = i / (TRAIL_PUFFS - 1);
       const spacing = 0.3 + Math.min(age, 5) * 0.16;
       puff.position.copy(from).addScaledVector(back, i * spacing).add(new Vector3(Math.sin(i * 2.3 + age) * t * 0.6, Math.cos(i * 1.7 + age * 0.7) * t * 0.5, Math.sin(i * 0.9) * t * 0.4));
-      puff.scale.setScalar(0.8 + t * 4.2);
+      puff.scale.setScalar((i < 8 ? 1.1 : 0.8) + t * 4.2);
       puff.material.rotation = i * 1.3 + age * 0.2;
       const growIn = Math.min(1, (age - 0.3) * 1.5);
-      puff.material.opacity = growIn * (i < 8 ? 0.95 - t * 1.4 : 0.6 * (1 - t));
+      puff.material.opacity = growIn * (i < 8 ? 0.95 - t * 1.4 : 0.6 * (1 - t)) * nearFade(puff, viewer);
     });
   };
 }
@@ -350,7 +489,7 @@ function explosion(scene: Scene): (origin: Vector3, drift: Vector3, viewer: Vect
       const cooling = Math.min(1, t / 1.8);
       color.copy(hot).lerp(warm, Math.min(1, cooling * 2.2)).lerp(cool, Math.max(0, cooling * 1.6 - 0.6));
       puff.sprite.material.color.copy(color);
-      puff.sprite.material.opacity = t <= 0 ? 0 : Math.min(0.8, t * 20) * Math.max(0, 1 - t / 2.6);
+      puff.sprite.material.opacity = t <= 0 ? 0 : Math.min(0.8, t * 20) * Math.max(0, 1 - t / 2.6) * nearFade(puff.sprite, viewer);
     }
     for (const puff of smoke) {
       const t = Math.max(0, age - puff.delay);
@@ -358,7 +497,7 @@ function explosion(scene: Scene): (origin: Vector3, drift: Vector3, viewer: Vect
       puff.sprite.position.copy(center).addScaledVector(puff.direction, puff.reach * push);
       puff.sprite.scale.setScalar(puff.size * (0.5 + push * 1.4));
       puff.sprite.material.rotation = puff.size + t * 0.15;
-      puff.sprite.material.opacity = t <= 0 ? 0 : Math.min(0.75, t * 1.5) * Math.max(0, 1 - t / 8);
+      puff.sprite.material.opacity = t <= 0 ? 0 : Math.min(0.75, t * 1.5) * Math.max(0, 1 - t / 8) * nearFade(puff.sprite, viewer);
     }
 
     // The ring faces the camera and races outward, thinning as it goes.
@@ -382,12 +521,86 @@ function explosion(scene: Scene): (origin: Vector3, drift: Vector3, viewer: Vect
     for (const { piece, direction, speed, spin } of debris) {
       piece.position.copy(center).addScaledVector(direction, 0.9 + speed * age);
       piece.rotation.set(spin.x * age, spin.y * age, spin.z * age);
+      // Never through the cabin round the camera.
+      piece.visible = piece.position.distanceTo(viewer) > 1.2;
     }
   };
 }
 
+/** How high up the hull the blast tears it open, and the hull's radius there. */
+const BREACH_HEIGHT = 1.5;
+const HULL_RADIUS = 0.92;
+
+interface HullBreach {
+  readonly root: Group;
+  /** Flicker the firelight inside the hole; `age` is seconds since the blast. */
+  update(time: number, age: number): void;
+}
+
+/**
+ * The hole the blast tears in the hull: soot spread round it, a black wound with a glowing edge, hull
+ * plates bent outward, and firelight flickering inside. Built along +z in the hull's own frame and
+ * curved to its radius; every piece is flat colour, so nothing in it depends on soft transparency.
+ */
+function hullBreach(): HullBreach {
+  const root = new Group();
+  root.visible = false;
+  const random = seeded(53);
+  /** A ragged disc of `radius`, centred at (x, y) and bent to lie on the hull's curve, `lift` above it. */
+  const patch = (radius: number, rough: number, x: number, y: number, lift: number) => {
+    const shape = new Shape();
+    const segments = 20;
+    for (let i = 0; i < segments; i += 1) {
+      const angle = (i / segments) * Math.PI * 2;
+      const r = radius * (1 - rough + random() * rough * 2);
+      if (i === 0) shape.moveTo(x + Math.cos(angle) * r, y + Math.sin(angle) * r);
+      else shape.lineTo(x + Math.cos(angle) * r, y + Math.sin(angle) * r);
+    }
+    shape.closePath();
+    const geometry = new ShapeGeometry(shape);
+    const position = geometry.attributes.position!;
+    for (let i = 0; i < position.count; i += 1) {
+      const px = position.getX(i);
+      position.setZ(i, lift - (px * px) / (2 * HULL_RADIUS));
+    }
+    return geometry;
+  };
+  const decal = (color: Color | number, offset: number, opacity = 1) =>
+    new MeshBasicMaterial({ color, transparent: opacity < 1, opacity, depthWrite: false, polygonOffset: true, polygonOffsetFactor: offset, polygonOffsetUnits: offset });
+  const soot = decal(0x17110d, -2, 0.82);
+  for (const [r, x, y] of [[0.3, 0, 0.05], [0.22, -0.2, -0.12], [0.2, 0.18, 0.2], [0.17, 0.05, -0.26]] as const) root.add(new Mesh(patch(r, 0.3, x, y, 0.004), soot));
+  const glowMaterial = decal(new Color(4.5, 1.6, 0.4), -4);
+  root.add(new Mesh(patch(0.2, 0.28, 0, 0, 0.006), glowMaterial));
+  root.add(new Mesh(patch(0.15, 0.3, 0, 0, 0.008), decal(0x040302, -6)));
+  // Torn plates curling out from the edge, white outside and burnt where they face the fire.
+  const plate = new MeshBasicMaterial({ color: 0x8c8780 });
+  const burnt = new MeshBasicMaterial({ color: 0x2e2824 });
+  for (let i = 0; i < 5; i += 1) {
+    const angle = (i / 5) * Math.PI * 2 + random() * 0.6;
+    const flap = new Mesh(new BoxGeometry(0.12 + random() * 0.06, 0.012, 0.08), i % 2 === 0 ? plate : burnt);
+    flap.position.set(Math.cos(angle) * 0.17, Math.sin(angle) * 0.17, 0.03);
+    flap.rotation.set(Math.PI / 2, 0, angle);
+    flap.rotateX(-0.6 - random() * 0.5);
+    root.add(flap);
+  }
+  const light = new PointLight(0xff7a2a, 0, 5, 1.6);
+  light.position.z = 0.3;
+  root.add(light);
+  const hot = new Color(4.5, 1.6, 0.4);
+  return {
+    root,
+    update(time, age) {
+      root.visible = age >= 0;
+      if (!root.visible) return;
+      const flicker = 0.75 + Math.sin(time * 23) * 0.12 + Math.sin(time * 37 + 1) * 0.13;
+      light.intensity = 3.2 * flicker;
+      glowMaterial.color.copy(hot).multiplyScalar(flicker);
+    },
+  };
+}
+
 /** Small white jets and puffs where the pod's explosive bolts fire. */
-function pyroPuffs(scene: Scene): (at: Vector3, out: Vector3, age: number) => void {
+function pyroPuffs(scene: Scene): (at: Vector3, out: Vector3, age: number, viewer: Vector3) => void {
   let seed = 5;
   const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   const puffs = Array.from({ length: PYRO_PUFFS }, () => {
@@ -397,14 +610,14 @@ function pyroPuffs(scene: Scene): (at: Vector3, out: Vector3, age: number) => vo
     return { sprite, spread: scatter(random).multiplyScalar(0.8), speed: 1 + random() * 2.5 };
   });
   const spot = new Vector3();
-  return (at, out, age) => {
+  return (at, out, age, viewer) => {
     for (const { sprite, spread, speed } of puffs) {
       sprite.visible = age >= 0 && age < 1.6;
       if (!sprite.visible) continue;
       spot.copy(out).add(spread).normalize();
       sprite.position.copy(at).addScaledVector(spot, (1 - Math.exp(-age * 3)) * speed);
       sprite.scale.setScalar(0.4 + age * 1.6);
-      sprite.material.opacity = Math.max(0, 0.85 - age * 0.55);
+      sprite.material.opacity = Math.max(0, 0.85 - age * 0.55) * nearFade(sprite, viewer);
     }
   };
 }
@@ -413,17 +626,18 @@ export function createSpaceSet(): SpaceSet {
   const scene = new Scene();
   scene.background = new Color(0x020308);
   scene.add(stars());
-  const moonCenter = new Vector3(10, -95, -110);
-  const moon = new Mesh(new IcosahedronGeometry(MOON_RADIUS, 7), new MeshStandardMaterial({ map: moonTexture(), roughness: 1 }));
+  const moonCenter = MOON_CENTER;
+  const moon = new Mesh(new SphereGeometry(MOON_RADIUS, 256, 128), moonMaterial());
   moon.position.copy(moonCenter);
-  // A faint rim of scattered light keeps the Moon's dark side from vanishing into space.
-  const moonRim = new Mesh(new IcosahedronGeometry(MOON_RADIUS * 1.012, 6), new MeshBasicMaterial({ color: 0x6f7cae, transparent: true, opacity: 0.08, depthWrite: false, side: DoubleSide, blending: AdditiveBlending }));
+  // Turned so the orbit runs along the texture's equator, where it is least stretched.
+  moon.rotation.set(Math.PI / 2, 0, 0.4);
+  // A faint glow of scattered light along the limb.
+  const moonRim = new Mesh(new SphereGeometry(MOON_RADIUS * 1.006, 128, 64), new MeshBasicMaterial({ color: 0x6f7cae, transparent: true, opacity: 0.08, depthWrite: false, side: BackSide, blending: AdditiveBlending }));
   moonRim.position.copy(moonCenter);
-  const earth = new Mesh(new IcosahedronGeometry(14, 5), new MeshStandardMaterial({ color: 0x2d6cc0, emissive: 0x16305a, emissiveIntensity: 0.4, roughness: 0.6 }));
-  earth.position.set(-170, 90, -420);
-  earth.add(new Mesh(new IcosahedronGeometry(14.8, 5), new MeshBasicMaterial({ color: 0x7fc0ff, transparent: true, opacity: 0.2, depthWrite: false })));
+  const earth = new Mesh(new IcosahedronGeometry(16, 5), new MeshStandardMaterial({ color: 0x2d6cc0, emissive: 0x16305a, emissiveIntensity: 0.4, roughness: 0.6 }));
+  earth.add(new Mesh(new IcosahedronGeometry(16.9, 5), new MeshBasicMaterial({ color: 0x7fc0ff, transparent: true, opacity: 0.2, depthWrite: false })));
   const sun = new DirectionalLight(0xfff0dc, 2.6);
-  sun.position.set(-80, 60, 120);
+  sun.position.copy(SUN_DIRECTION).multiplyScalar(200);
   scene.add(moon, moonRim, earth, sun, new HemisphereLight(0x8a9cff, 0x000000, 0.18));
 
   const rocket = rocketModel();
@@ -448,18 +662,27 @@ export function createSpaceSet(): SpaceSet {
   const blowout = explosion(scene);
   const pyro = pyroPuffs(scene);
   scene.add(ship);
+  const breach = hullBreach();
+  ship.add(breach.root);
 
   const pod = landerModel();
   pod.flame.visible = false;
-  const podEngine = flame(2.8, 0.42);
-  podEngine.root.position.y = 0.15;
-  pod.root.add(podEngine.root);
-  const podLight = new PointLight(0xffa050, 0, 10, 1.8);
-  podLight.position.y = -0.6;
+  // The story is told from inside the pod, so its shell and flame are never seen; only its engine's glow is.
+  pod.root.children[0]!.visible = false;
+  const cabin = podCabin();
+  scene.add(cabin.root);
+  // Bright and far-reaching: on the way down it throws a warm pool of light on the surface below.
+  const podLight = new PointLight(0xffa050, 0, 60, 1.2);
+  // Well below the pod, so it lights the ground it falls toward and not the cabin walls above it.
+  podLight.position.y = -5;
   pod.root.add(podLight);
   scene.add(pod.root);
 
   const drive = new Vector3();
+  // The breach the blast tears in the hull, in the ship's own frame so it turns with the tumbling wreck.
+  const breachLocal = new Vector3(0, 0, 1);
+  const breachOut = new Vector3();
+  const breachAt = new Vector3();
   const blastOrigin = new Vector3();
   const blastDrift = new Vector3();
   const podRelease = new Vector3();
@@ -471,9 +694,17 @@ export function createSpaceSet(): SpaceSet {
     scene,
     ship,
     pod,
+    cabin,
+    earth,
+    aimBreach(direction) {
+      breachLocal.copy(direction).setY(0).normalize();
+      breach.root.position.copy(breachLocal).multiplyScalar(HULL_RADIUS).setY(BREACH_HEIGHT);
+      breach.root.quaternion.setFromUnitVectors(new Vector3(0, 0, 1), breachLocal);
+    },
     moonCenter,
     moonRadius: MOON_RADIUS,
-    update(time, { spark, sinceBlast, sinceEject, engine: burning, podThrust, heading, shipVelocity, viewer }) {
+    update(time, moment) {
+      const { spark, sinceBlast, sinceEject, engine: burning, podThrust, heading, shipVelocity, viewer } = moment;
       arcMeshes.forEach((arc, i) => {
         // Arcs crackle on and off; the worse the drive, the more of them at once.
         arc.visible = sinceBlast < 0 && spark > 0 && Math.sin(time * (23 + i * 7) + i * 2.1) > 1 - spark * 1.6;
@@ -482,8 +713,8 @@ export function createSpaceSet(): SpaceSet {
       arcLight.intensity = lit * 6 * (0.6 + Math.random() * 0.4);
       engine.set(burning, time, burning ? 1 - spark * 0.35 * Math.random() : 0);
       engineLight.intensity = burning ? 12 + Math.sin(time * 37) * 2 : 0;
-      podEngine.set(podThrust > 0, time, podThrust);
-      podLight.intensity = podThrust * 10;
+      podLight.intensity = podThrust * 24;
+      cabin.update(moment.cabin);
 
       ship.localToWorld(drive.set(0, DRIVE_HEIGHT, 0));
       if (sinceBlast >= 0 && !blasted) {
@@ -493,7 +724,12 @@ export function createSpaceSet(): SpaceSet {
       }
       if (sinceBlast < 0) blasted = false;
       blowout(blastOrigin, blastDrift, viewer, blasted ? sinceBlast : -1);
-      trail(drive, heading.clone().negate(), sinceBlast);
+      breachOut.copy(breachLocal).applyQuaternion(ship.quaternion);
+      breach.update(time, blasted ? sinceBlast : -1);
+      breachAt.copy(breachLocal).multiplyScalar(HULL_RADIUS + 0.1).setY(BREACH_HEIGHT);
+      ship.localToWorld(breachAt);
+      // Fire and smoke pour out of the breach and trail off behind the falling hull.
+      trail(breachAt, breachOut.addScaledVector(heading, -0.6).normalize(), sinceBlast, viewer);
 
       if (sinceEject >= 0 && !ejected) {
         ejected = true;
@@ -501,7 +737,7 @@ export function createSpaceSet(): SpaceSet {
         podOut.copy(pod.root.position).sub(drive).setLength(1);
       }
       if (sinceEject < 0) ejected = false;
-      pyro(podRelease, podOut, ejected ? sinceEject : -1);
+      pyro(podRelease, podOut, ejected ? sinceEject : -1, viewer);
     },
   };
 }

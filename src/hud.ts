@@ -45,8 +45,11 @@ export interface Hud {
   setIntroFade(black: number, white: number): void;
   /** The red master-alarm glow pulsing around the screen edges, 0..1. */
   setIntroAlarm(level: number): void;
-  /** The helmet visor frame and its readouts, for the first-person shot; `fog` mists it with breath, 0..1. */
-  setIntroVisor(on: boolean, fog?: number): void;
+  /**
+   * The helmet visor frame and the suit's readouts, for the first-person shots; `fog` mists it with
+   * breath, 0..1. Readout lines starting with "!" are alerts.
+   */
+  setIntroVisor(on: boolean, fog?: number, readout?: { readonly left: readonly string[]; readonly right: readonly string[] }, cracked?: boolean): void;
   onOrder(handler: (key: string, id: string) => void): void;
   onToggle(handler: (key: string) => void): void;
   onDrop(handler: (item: ItemId) => void): void;
@@ -85,6 +88,17 @@ export function createHud(): Hud {
   const introVisor = requireElement<HTMLElement>("intro-visor");
   const visorFog = requireElement<HTMLElement>("visor-fog");
   const introAlarm = requireElement<HTMLElement>("intro-alarm");
+  const readoutLeft = requireElement<HTMLElement>("visor-left");
+  const readoutRight = requireElement<HTMLElement>("visor-right");
+  /** Write the suit's readout lines, touching the page only when a line changes. */
+  const showReadout = (column: HTMLElement, lines: readonly string[]) => {
+    lines.forEach((line, i) => {
+      const span = column.children[i] ?? column.appendChild(document.createElement("span"));
+      const text = line.startsWith("!") ? line.slice(1) : line;
+      if (span.textContent !== text) span.textContent = text;
+      span.classList.toggle("visor-alert", line.startsWith("!"));
+    });
+  };
   const view = requireElement<HTMLElement>("view");
   let orderHandler: (key: string, id: string) => void = () => undefined;
   let toggleHandler: (key: string) => void = () => undefined;
@@ -249,8 +263,13 @@ export function createHud(): Hud {
     setIntroAlarm(level) {
       introAlarm.style.opacity = level.toFixed(3);
     },
-    setIntroVisor(on, fog = 0) {
+    setIntroVisor(on, fog = 0, readout, cracked = true) {
       visorFog.style.opacity = fog.toFixed(3);
+      introVisor.classList.toggle("is-intact", !cracked);
+      if (readout) {
+        showReadout(readoutLeft, readout.left);
+        showReadout(readoutRight, readout.right);
+      }
       if (introVisor.hidden === !on) return;
       introVisor.hidden = !on;
     },

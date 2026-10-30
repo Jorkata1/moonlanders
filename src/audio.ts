@@ -2,7 +2,7 @@
 
 import { createMusic, type Music, type MusicMood } from "./music";
 
-export type Cue = "mine" | "pickup" | "drop" | "pay" | "build" | "error" | "warning" | "impact" | "alarm" | "objective" | "upgrade" | "launch" | "wind" | "thud" | "lock" | "warmup" | "rumble" | "explosion" | "pyro" | "heartbeat" | "breath";
+export type Cue = "mine" | "pickup" | "drop" | "pay" | "build" | "error" | "warning" | "impact" | "alarm" | "objective" | "upgrade" | "launch" | "wind" | "thud" | "lock" | "warmup" | "rumble" | "explosion" | "boom" | "pyro" | "rcs" | "crackle" | "creak" | "heartbeat" | "breath";
 
 interface Tone {
   frequency: number;
@@ -58,6 +58,27 @@ const CUES: Record<Cue, Tone[]> = {
     { frequency: 3200, endFrequency: 70, duration: 3.2, type: "sine", gain: 0.55, noise: true },
     { frequency: 70, endFrequency: 22, duration: 2.4, type: "sine", gain: 0.4 },
     { frequency: 900, endFrequency: 120, duration: 1.4, type: "sine", gain: 0.2, noise: true, delay: 0.35 },
+  ],
+  // The blast heard from inside the pod, through the hull: deep, dull, with a long low tail.
+  boom: [
+    { frequency: 520, endFrequency: 40, duration: 3.6, type: "sine", gain: 0.7, noise: true },
+    { frequency: 55, endFrequency: 18, duration: 3.0, type: "sine", gain: 0.5 },
+    { frequency: 300, endFrequency: 60, duration: 1.8, type: "sine", gain: 0.25, noise: true, delay: 0.45 },
+  ],
+  // A short hiss of attitude-thruster gas.
+  rcs: [{ frequency: 4200, endFrequency: 2600, duration: 0.2, type: "sine", gain: 0.12, noise: true }],
+  // The overloading drive spitting and crackling outside the window.
+  crackle: [
+    { frequency: 6000, endFrequency: 3000, duration: 0.07, type: "sine", gain: 0.12, noise: true },
+    { frequency: 5200, endFrequency: 2400, duration: 0.05, type: "sine", gain: 0.1, noise: true, delay: 0.21 },
+    { frequency: 6400, endFrequency: 3000, duration: 0.08, type: "sine", gain: 0.12, noise: true, delay: 0.37 },
+    { frequency: 4800, endFrequency: 2000, duration: 0.06, type: "sine", gain: 0.11, noise: true, delay: 0.62 },
+    { frequency: 120, endFrequency: 180, duration: 1.1, type: "sawtooth", gain: 0.04 },
+  ],
+  // The pod's frame groaning under the shaking on the way down.
+  creak: [
+    { frequency: 78, endFrequency: 52, duration: 1.3, type: "sawtooth", gain: 0.05 },
+    { frequency: 640, endFrequency: 260, duration: 0.9, type: "sine", gain: 0.06, noise: true, delay: 0.2 },
   ],
   pyro: [
     { frequency: 5000, endFrequency: 600, duration: 0.18, type: "sine", gain: 0.35, noise: true },

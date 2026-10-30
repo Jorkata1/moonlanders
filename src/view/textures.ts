@@ -1,6 +1,61 @@
-import { CanvasTexture, RepeatWrapping, SRGBColorSpace } from "three";
+import { CanvasTexture, DataTexture, LinearFilter, LinearMipmapLinearFilter, RepeatWrapping, RGBAFormat, SRGBColorSpace, type Texture } from "three";
 
 const cache = new Map<string, CanvasTexture>();
+const softCache = new Map<string, DataTexture>();
+const WHITE = [255, 255, 255] as const;
+
+/**
+ * A soft shape for glows, smoke, flames and dust: drawn on a canvas like any other texture, but
+ * uploaded as plain pixels that are all pure white (or `tint`'s colour at that spot, u and v from the
+ * bottom-left) with only their transparency taken from the drawing. Safari dithers canvas gradients
+ * and un-premultiplies the canvas on upload, which turns the faint edges of a soft shape into bright
+ * random red, green and blue specks; keeping only the alpha leaves nothing for it to scramble.
+ */
+export function softTexture(key: string, width: number, height: number, draw: (ctx: CanvasRenderingContext2D) => void, tint?: (u: number, v: number) => readonly [number, number, number]): Texture {
+  const cached = softCache.get(key);
+  if (cached) return cached;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("2D canvas is not available for textures");
+  draw(ctx);
+  const source = ctx.getImageData(0, 0, width, height).data;
+  const data = new Uint8Array(width * height * 4);
+  for (let y = 0; y < height; y += 1) {
+    // Rows bottom-up, the way a canvas texture is uploaded, so v = 0 is the drawing's bottom edge.
+    const row = height - 1 - y;
+    for (let x = 0; x < width; x += 1) {
+      const [r, g, b] = tint ? tint(x / (width - 1), y / (height - 1)) : WHITE;
+      const at = (y * width + x) * 4;
+      data[at] = r;
+      data[at + 1] = g;
+      data[at + 2] = b;
+      data[at + 3] = source[(row * width + x) * 4 + 3]!;
+    }
+  }
+  const texture = new DataTexture(data, width, height, RGBAFormat);
+  texture.colorSpace = SRGBColorSpace;
+  texture.magFilter = LinearFilter;
+  texture.minFilter = LinearMipmapLinearFilter;
+  texture.generateMipmaps = true;
+  texture.needsUpdate = true;
+  softCache.set(key, texture);
+  return texture;
+}
+
+/** The colour at `t` (0..1) along a list of [position, r, g, b] stops. */
+export function gradientAt(stops: readonly (readonly [number, number, number, number])[], t: number): [number, number, number] {
+  const next = stops.findIndex(([at]) => at >= t);
+  if (next <= 0) {
+    const stop = stops[next === 0 ? 0 : stops.length - 1]!;
+    return [stop[1], stop[2], stop[3]];
+  }
+  const a = stops[next - 1]!;
+  const b = stops[next]!;
+  const k = (t - a[0]) / (b[0] - a[0]);
+  return [a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k, a[3] + (b[3] - a[3]) * k];
+}
 
 /** Draw a texture once on a canvas and reuse it by key; the game ships no image files. */
 export function canvasTexture(key: string, width: number, height: number, draw: (ctx: CanvasRenderingContext2D) => void): CanvasTexture {

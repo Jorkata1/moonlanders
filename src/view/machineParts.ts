@@ -8,9 +8,10 @@ import {
   SpriteMaterial,
   TorusGeometry,
   Vector3,
+  type Texture,
 } from "three";
 import { LOOK, box, glow, mesh, surface } from "./materials";
-import { canvasTexture } from "./textures";
+import { canvasTexture, softTexture } from "./textures";
 
 /** What the status lamp tower shows: green working, amber waiting for input, red output full. */
 export type MachineStatus = "working" | "idle" | "blocked";
@@ -38,8 +39,8 @@ export interface Feed {
 }
 
 
-function puffTexture(): CanvasTexture {
-  return canvasTexture("machine-puff", 64, 64, (ctx) => {
+function puffTexture(): Texture {
+  return softTexture("machine-puff", 64, 64, (ctx) => {
     const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
     gradient.addColorStop(0, "rgba(255, 255, 255, 0.9)");
     gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
