@@ -47,7 +47,9 @@ function hasProgress(state: GameState): boolean {
 
 async function boot(): Promise<void> {
   await initPlatform();
-  let state = loadState();
+  // Opening the game with #cuts reviews the intro cut by cut, on a fresh Moon, without touching the saved game.
+  const reviewIntro = window.location.hash === "#cuts";
+  let state = reviewIntro ? firstPlanetState() : loadState();
   const settings = loadSettings();
   let phase: Phase = "menu";
   const quality = detectQuality();
@@ -68,8 +70,12 @@ async function boot(): Promise<void> {
   const musicSetting = requireElement<HTMLButtonElement>("music-setting");
   const vibrationSetting = requireElement<HTMLButtonElement>("vibration-setting");
 
-  const save = () => writeSave(SAVE_KEY, JSON.stringify(toSave(state)));
-  const saveSettings = () => writeSave(SETTINGS_KEY, JSON.stringify(settings));
+  const save = () => {
+    if (!reviewIntro) writeSave(SAVE_KEY, JSON.stringify(toSave(state)));
+  };
+  const saveSettings = () => {
+    if (!reviewIntro) writeSave(SETTINGS_KEY, JSON.stringify(settings));
+  };
 
   function showComplete(): void {
     phase = "complete";
@@ -113,7 +119,7 @@ async function boot(): Promise<void> {
       controls,
       hud,
       audio,
-      { playIntro: !arrivalSeen(settings, state.planet.id) && !hasProgress(state), tutorialDone: settings.tutorialDone, seenTips: new Set(settings.tips), touch: isTouch },
+      { playIntro: reviewIntro || (!arrivalSeen(settings, state.planet.id) && !hasProgress(state)), reviewIntro, tutorialDone: settings.tutorialDone, seenTips: new Set(settings.tips), touch: isTouch },
       {
         onSave: save,
         onLaunched: travelOn,
@@ -166,7 +172,7 @@ async function boot(): Promise<void> {
     requireElement("start-text").textContent = startText(state.planet);
     renderRoute(requireElement("planet-row"), state.planet);
     const progressed = hasProgress(state) || state.planet.id !== PLANETS[0]?.id;
-    startButton.textContent = progressed ? "Continue" : "Start mission";
+    startButton.textContent = reviewIntro ? "Review intro cuts" : progressed ? "Continue" : "Start mission";
     resetButton.hidden = !progressed;
     resetButton.textContent = "New game";
     resetButton.dataset.armed = "false";

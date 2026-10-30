@@ -78,6 +78,8 @@ export interface RenderPipeline {
   resize(width: number, height: number): void;
   /** Draw a different scene from now on (the intro's orbit set), or the original one again with null. */
   setScene(next: Scene | null): void;
+  /** How bright something must be to glow; the base's own look uses the default. */
+  setGlare(threshold?: number): void;
   /** Give every material flagged `userData.reflective` the studio reflection map. */
   applyReflections(root: Object3D): void;
   /** Free GPU memory so another pipeline can take over the same canvas. */
@@ -161,6 +163,9 @@ export function createRenderPipeline(canvas: HTMLCanvasElement, scene: Scene, ca
       aoPass?.setSize(width * quality.pixelRatio, height * quality.pixelRatio);
     },
     applyReflections,
+    setGlare(threshold = BLOOM.threshold) {
+      if (bloomPass) bloomPass.threshold = threshold;
+    },
     dispose() {
       composer?.dispose();
       bloomPass?.dispose();

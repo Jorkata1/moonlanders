@@ -32,6 +32,8 @@ const LAUNCH_DONE = -2;
 
 export interface GameOptions {
   playIntro: boolean;
+  /** Review the intro cut by cut instead of playing the game. */
+  reviewIntro: boolean;
   tutorialDone: boolean;
   seenTips: ReadonlySet<string>;
   touch: boolean;
@@ -110,7 +112,7 @@ export function createGame(canvas: HTMLCanvasElement, state: GameState, quality:
 
   if (options.playIntro) {
     const portrait = window.innerWidth < window.innerHeight;
-    intro = startIntro({ state, world, pipeline, camera, hero: playerView.model, fx, hud, audio, cameraOffset: CAMERA_OFFSET.clone().multiplyScalar(portrait ? PORTRAIT_ZOOM : 1), portrait });
+    intro = startIntro({ state, scene, world, pipeline, camera, hero: playerView.model, fx, hud, audio, cameraOffset: CAMERA_OFFSET.clone().multiplyScalar(portrait ? PORTRAIT_ZOOM : 1), portrait, review: options.reviewIntro });
   }
 
   function resize(): void {
@@ -269,7 +271,8 @@ export function createGame(canvas: HTMLCanvasElement, state: GameState, quality:
       audio.play("upgrade");
     },
     skipIntro() {
-      if (!intro || intro.done()) return;
+      // In review the intro never hands over to the game.
+      if (!intro || intro.done() || options.reviewIntro) return;
       intro.skip();
       finishIntro();
     },

@@ -60,10 +60,20 @@
   <p id="toast" class="glass" role="status" aria-live="polite" hidden></p>
 </div>
 <div id="intro" hidden>
-  <div class="letterbox letterbox--top"></div>
-  <div class="letterbox letterbox--bottom"></div>
+  <div id="intro-visor" hidden aria-hidden="true">
+    <div id="visor-fog"></div>
+    <svg class="visor-crack" viewBox="0 0 100 100" preserveAspectRatio="none"><path d="M81 4 L78.5 10.2 L80.1 12.6 L76.4 19.8 L77.2 22.9 L73.1 30.4 L73.9 33.8 L70.6 39.2 M78.5 10.2 L84.9 12.1 L88.2 11.4 M76.4 19.8 L71.8 19.1 L68.9 21.2 M73.1 30.4 L77.6 34.9 L78.4 38.6 M80.1 12.6 L82.4 16.9"/></svg>
+    <div class="visor-readout visor-readout--left"><span>SUIT 03</span><span>PRESSURE 0.61 ATM</span><span>COMMS NO SIGNAL</span></div>
+    <div class="visor-readout visor-readout--right"><span class="visor-alert">O2 LOW · 18%</span><span>HEART RATE 141</span><span>POD BEACON ACTIVE</span></div>
+  </div>
   <div class="lid lid--top" id="lid-top"></div>
   <div class="lid lid--bottom" id="lid-bottom"></div>
+  <div id="lid-glow" aria-hidden="true"></div>
+  <div class="letterbox letterbox--top"></div>
+  <div class="letterbox letterbox--bottom"></div>
+  <div id="intro-alarm" aria-hidden="true"></div>
+  <div id="intro-flash" aria-hidden="true"></div>
+  <div id="intro-fade" aria-hidden="true"></div>
   <p id="intro-caption" hidden></p>
   <button class="secondary" id="intro-skip" type="button">Skip intro</button>
 </div>

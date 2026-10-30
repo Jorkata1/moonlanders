@@ -51,7 +51,11 @@ export interface AstronautModel {
   root: Group;
   body: Group;
   legs: [Group, Group];
+  /** Knee joints, straight in play; the intro bends them. */
+  knees: [Group, Group];
   arms: [Group, Group];
+  /** Elbow joints, straight in play; the intro bends them. */
+  elbows: [Group, Group];
   stackAnchor: Group;
   drill: LaserDrill;
   oxygenLight: Mesh;

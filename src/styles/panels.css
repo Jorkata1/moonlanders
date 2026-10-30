@@ -41,9 +41,45 @@
 .letterbox { position: absolute; left: 0; right: 0; height: 11vh; background: #000; }
 .letterbox--top { top: 0; animation: bar-top 600ms ease-out; }
 .letterbox--bottom { bottom: 0; animation: bar-bottom 600ms ease-out; }
-.lid { position: absolute; left: 0; right: 0; height: 0; background: #000; }
-.lid--top { top: 0; border-radius: 0 0 50% 50% / 0 0 18% 18%; }
-.lid--bottom { bottom: 0; border-radius: 50% 50% 0 0 / 18% 18% 0 0; }
+/* Eyelids: straight and soft-edged (they are too close to the eye to ever be in focus), a warm dark red
+   from light through the skin. The upper lid does the closing; the lower one barely rises to meet it. */
+.lid { position: absolute; left: -4%; right: -4%; height: 0; --feather: 0vh; --lid: #080201; }
+.lid--top { top: 0; background: linear-gradient(to bottom, var(--lid) calc(100% - var(--feather)), transparent); transform: rotate(-0.8deg); transform-origin: top center; }
+.lid--bottom { bottom: 0; background: linear-gradient(to top, var(--lid) calc(100% - var(--feather)), transparent); }
+#lid-glow { position: absolute; inset: 0; opacity: 0; pointer-events: none; background: linear-gradient(rgba(118, 30, 12, 1), rgba(70, 14, 6, 1)); }
+#intro-fade, #intro-flash, #intro-alarm { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
+#intro-alarm { background: radial-gradient(ellipse 80% 70% at 50% 50%, transparent 45%, rgba(255, 40, 24, 0.55) 100%); }
+#intro-fade { background: #000; }
+#intro-flash { background: radial-gradient(circle at 50% 50%, #ffffff 0%, #fff4dc 45%, #ffd9a0 100%); mix-blend-mode: screen; }
+/* Through the helmet: soft shading toward the screen edges, a gold tint, a glare streak, a crack and the suit's readouts. */
+#intro-visor { position: absolute; inset: 0; background:
+  linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.07) 38%, transparent 46%),
+  linear-gradient(to right, rgba(6, 4, 2, 0.6), transparent 16%, transparent 84%, rgba(6, 4, 2, 0.6)),
+  linear-gradient(to bottom, rgba(6, 4, 2, 0.5), transparent 18%, transparent 82%, rgba(6, 4, 2, 0.55)),
+  linear-gradient(rgba(255, 196, 90, 0.035), rgba(255, 196, 90, 0.035)); animation: visor-in 900ms ease-out; }
+/* Breath misting the lower visor. */
+#visor-fog { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse 60% 38% at 50% 92%, rgba(225, 232, 240, 0.42), rgba(225, 232, 240, 0.12) 55%, transparent 80%); }
+/* The suit's readouts come up a beat after the eyes open, with a flicker. */
+.visor-readout { animation: visor-boot 1.6s steps(8, jump-end) both; animation-delay: 0.9s; }
+@keyframes visor-boot { 0% { opacity: 0; } 30% { opacity: 0.9; } 40% { opacity: 0.1; } 60% { opacity: 1; } 70% { opacity: 0.4; } 100% { opacity: 1; } }
+.visor-crack { position: absolute; inset: 0; width: 100%; height: 100%; fill: none; }
+.visor-crack path { stroke: rgba(235, 245, 255, 0.5); stroke-width: 1px; stroke-linejoin: miter; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 1.5px rgba(200, 230, 255, 0.7)); }
+.visor-readout { position: absolute; bottom: calc(11vh + 18%); display: grid; gap: 4px; font-family: var(--font-display); font-weight: 600; font-size: clamp(11px, 1.3vw, 15px); letter-spacing: 0.12em; color: rgba(140, 236, 255, 0.85); text-shadow: 0 0 8px rgba(77, 227, 255, 0.6); }
+.visor-readout--left { left: 16%; }
+.visor-readout--right { right: 16%; text-align: right; }
+.visor-alert { color: #ff7262; text-shadow: 0 0 10px rgba(255, 80, 60, 0.8); animation: visor-blink 900ms steps(2, jump-none) infinite; }
+@keyframes visor-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes visor-blink { 50% { opacity: 0.25; } }
+@media (max-width: 760px) { .visor-readout { bottom: calc(11vh + 8%); } .visor-readout--left { left: 8%; } .visor-readout--right { right: 8%; } }
+/* Intro review (#cuts): a bar of cut buttons over the top letterbox. */
+.cut-picker { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 6px); left: var(--gutter-left); right: var(--gutter-right); z-index: 6; display: grid; gap: 6px; justify-items: center; pointer-events: none; }
+.cut-status { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 13px; letter-spacing: 0.06em; color: var(--gold); font-variant-numeric: tabular-nums; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9); }
+.cut-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; pointer-events: auto; }
+.cut-button { min-height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line); background: rgba(14, 18, 36, 0.85); color: var(--text); font: 700 12px var(--font-body); cursor: pointer; transition: border-color 150ms ease-out, background-color 150ms ease-out; }
+.cut-button:hover { border-color: var(--cyan); }
+.cut-button[aria-pressed="true"] { border-color: var(--gold); background: rgba(60, 46, 10, 0.9); color: var(--gold); }
+.cut-button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+.is-cut-review #intro-skip { display: none; }
 #intro-caption { position: absolute; left: 50%; bottom: calc(11vh + 24px); transform: translateX(-50%); width: min(640px, calc(100% - 32px)); margin: 0; text-align: center; font-family: var(--font-display); font-weight: 600; font-size: clamp(18px, 2.4vw, 26px); line-height: 1.35; text-wrap: balance; color: #fff; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8); }
 #intro-caption.is-new { animation: caption-in 700ms ease-out; }
 #intro-skip { position: absolute; right: var(--gutter-right); bottom: calc(env(safe-area-inset-bottom, 0px) + 2.5vh); pointer-events: auto; min-height: 40px; padding: 0 16px; background: rgba(14, 18, 36, 0.6); color: var(--text); }

@@ -171,8 +171,8 @@ export const MOON: PlanetDef = {
   route: { label: "Moon", resources: "Carbon · Clay · Iron · Helium X", dot: ["#d9dbe6", "#6f7180"] },
   music: "moon",
   arrivalCaptions: [
-    "Year 2187. Your jump drive blows out in orbit around the Moon.",
-    "The escape pod breaks away. The rocket goes down hard beyond the ridge.",
-    "Mine carbon, build a workbench and get back to the rocket.",
+    "Year 2187. Lunar orbit.",
+    "The jump drive is lost. The pod breaks away.",
+    "Mine carbon, build a workbench and find your way back to the rocket.",
   ],
 };

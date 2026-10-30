@@ -13,6 +13,7 @@ import {
   PlaneGeometry,
   Points,
   PointsMaterial,
+  Vector3,
 } from "three";
 import type { PlanetDef, Point } from "../planets/types";
 import { hash, noise, rock, scatter } from "./rocks";
@@ -23,6 +24,8 @@ const GROUND_SEGMENTS = 240;
 const WARM_DUST = new Color(0x8a7462);
 const COOL_DUST = new Color(0x55607e);
 const EDGE_RISE = 0.55;
+/** Where Earth hangs in the base's sky. */
+export const EARTH_POSITION = new Vector3(-60, 48, -150);
 
 function outsideDistance(planet: PlanetDef, x: number, z: number): number {
   const { minX, maxX, minZ, maxZ } = planet.bounds;
@@ -214,7 +217,7 @@ function earth(): Group {
   globe.rotation.set(0.4, 2.2, 0.2);
   const halo = new Mesh(new IcosahedronGeometry(9.6, 4), new MeshBasicMaterial({ color: 0x6fb4ff, transparent: true, opacity: 0.18, fog: false, depthWrite: false }));
   group.add(globe, halo);
-  group.position.set(-60, 48, -150);
+  group.position.copy(EARTH_POSITION);
   return group;
 }
 

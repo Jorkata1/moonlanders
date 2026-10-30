@@ -41,6 +41,12 @@ export interface Hud {
   setIntroCaption(text: string | null): void;
   /** Eyelids over the intro: 1 fully open, 0 closed; `blur` softens the view while waking, in pixels. */
   setIntroEyes(open: number, blur: number): void;
+  /** Full-screen fades over the intro: `black` to black, `white` for a blinding flash; 0..1. */
+  setIntroFade(black: number, white: number): void;
+  /** The red master-alarm glow pulsing around the screen edges, 0..1. */
+  setIntroAlarm(level: number): void;
+  /** The helmet visor frame and its readouts, for the first-person shot; `fog` mists it with breath, 0..1. */
+  setIntroVisor(on: boolean, fog?: number): void;
   onOrder(handler: (key: string, id: string) => void): void;
   onToggle(handler: (key: string) => void): void;
   onDrop(handler: (item: ItemId) => void): void;
@@ -71,7 +77,14 @@ export function createHud(): Hud {
   const coachOk = requireElement<HTMLButtonElement>("coach-ok");
   const intro = requireElement<HTMLElement>("intro");
   const introCaption = requireElement<HTMLElement>("intro-caption");
-  const lids = [requireElement<HTMLElement>("lid-top"), requireElement<HTMLElement>("lid-bottom")];
+  const lidTop = requireElement<HTMLElement>("lid-top");
+  const lidBottom = requireElement<HTMLElement>("lid-bottom");
+  const lidGlow = requireElement<HTMLElement>("lid-glow");
+  const introFade = requireElement<HTMLElement>("intro-fade");
+  const introFlash = requireElement<HTMLElement>("intro-flash");
+  const introVisor = requireElement<HTMLElement>("intro-visor");
+  const visorFog = requireElement<HTMLElement>("visor-fog");
+  const introAlarm = requireElement<HTMLElement>("intro-alarm");
   const view = requireElement<HTMLElement>("view");
   let orderHandler: (key: string, id: string) => void = () => undefined;
   let toggleHandler: (key: string) => void = () => undefined;
@@ -215,9 +228,31 @@ export function createHud(): Hud {
       if (visible) requireElement<HTMLButtonElement>("intro-skip").focus();
     },
     setIntroEyes(open, blur) {
-      const closed = `${((1 - Math.min(1, Math.max(0, open))) * 50).toFixed(2)}vh`;
-      for (const lid of lids) lid.style.height = closed;
-      view.style.filter = blur > 0.2 ? `blur(${blur.toFixed(1)}px)` : "";
+      const closed = 1 - Math.min(1, Math.max(0, open));
+      // The upper lid sweeps most of the way down; the lower one rises a little to meet it, low in the frame.
+      // Their edges are wide, soft gradients, never a hard shape.
+      const feather = 20 * Math.min(1, closed * 3);
+      lidTop.style.height = `${(closed * 84 + feather).toFixed(2)}vh`;
+      lidTop.style.setProperty("--feather", `${feather.toFixed(2)}vh`);
+      lidBottom.style.height = `${(closed * 16 + feather * 0.6).toFixed(2)}vh`;
+      lidBottom.style.setProperty("--feather", `${(feather * 0.6).toFixed(2)}vh`);
+      // Nearly shut, light through the lids warms the little that is still visible.
+      lidGlow.style.opacity = (closed ** 1.5 * 0.12).toFixed(3);
+      // The view softens as the lids close, on top of any grogginess blur.
+      const soft = blur + closed * 5;
+      view.style.filter = soft > 0.2 ? `blur(${soft.toFixed(1)}px)` : "";
+    },
+    setIntroFade(black, white) {
+      introFade.style.opacity = black.toFixed(3);
+      introFlash.style.opacity = white.toFixed(3);
+    },
+    setIntroAlarm(level) {
+      introAlarm.style.opacity = level.toFixed(3);
+    },
+    setIntroVisor(on, fog = 0) {
+      visorFog.style.opacity = fog.toFixed(3);
+      if (introVisor.hidden === !on) return;
+      introVisor.hidden = !on;
     },
     setIntroCaption(text) {
       introCaption.hidden = text === null;

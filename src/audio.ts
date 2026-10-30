@@ -2,7 +2,7 @@
 
 import { createMusic, type Music, type MusicMood } from "./music";
 
-export type Cue = "mine" | "pickup" | "drop" | "pay" | "build" | "error" | "warning" | "impact" | "alarm" | "objective" | "upgrade" | "launch" | "wind" | "thud" | "lock" | "warmup";
+export type Cue = "mine" | "pickup" | "drop" | "pay" | "build" | "error" | "warning" | "impact" | "alarm" | "objective" | "upgrade" | "launch" | "wind" | "thud" | "lock" | "warmup" | "rumble" | "explosion" | "pyro" | "heartbeat" | "breath";
 
 interface Tone {
   frequency: number;
@@ -11,6 +11,8 @@ interface Tone {
   type: OscillatorType;
   gain: number;
   delay?: number;
+  /** Filtered noise instead of a pitched tone; `frequency` then sweeps the low-pass cutoff. */
+  noise?: boolean;
 }
 
 const CUES: Record<Cue, Tone[]> = {
@@ -48,6 +50,31 @@ const CUES: Record<Cue, Tone[]> = {
     { frequency: 523, endFrequency: 1046, duration: 0.25, type: "triangle", gain: 0.14 },
   ],
   launch: [{ frequency: 70, endFrequency: 30, duration: 3.5, type: "sawtooth", gain: 0.25 }],
+  rumble: [
+    { frequency: 260, endFrequency: 140, duration: 6.5, type: "sine", gain: 0.16, noise: true },
+    { frequency: 46, endFrequency: 40, duration: 6.5, type: "sawtooth", gain: 0.05 },
+  ],
+  explosion: [
+    { frequency: 3200, endFrequency: 70, duration: 3.2, type: "sine", gain: 0.55, noise: true },
+    { frequency: 70, endFrequency: 22, duration: 2.4, type: "sine", gain: 0.4 },
+    { frequency: 900, endFrequency: 120, duration: 1.4, type: "sine", gain: 0.2, noise: true, delay: 0.35 },
+  ],
+  pyro: [
+    { frequency: 5000, endFrequency: 600, duration: 0.18, type: "sine", gain: 0.35, noise: true },
+    { frequency: 4200, endFrequency: 500, duration: 0.16, type: "sine", gain: 0.28, noise: true, delay: 0.09 },
+    { frequency: 140, endFrequency: 55, duration: 0.35, type: "sine", gain: 0.25 },
+  ],
+  heartbeat: [
+    { frequency: 62, endFrequency: 40, duration: 0.22, type: "sine", gain: 0.45 },
+    { frequency: 58, endFrequency: 38, duration: 0.2, type: "sine", gain: 0.32, delay: 0.24 },
+    { frequency: 62, endFrequency: 40, duration: 0.22, type: "sine", gain: 0.4, delay: 1.1 },
+    { frequency: 58, endFrequency: 38, duration: 0.2, type: "sine", gain: 0.28, delay: 1.34 },
+  ],
+  breath: [
+    { frequency: 1400, endFrequency: 700, duration: 1.3, type: "sine", gain: 0.09, noise: true },
+    { frequency: 900, endFrequency: 400, duration: 1.6, type: "sine", gain: 0.07, noise: true, delay: 1.5 },
+    { frequency: 1400, endFrequency: 700, duration: 1.2, type: "sine", gain: 0.08, noise: true, delay: 3.4 },
+  ],
   wind: [
     { frequency: 110, endFrequency: 190, duration: 1.4, type: "sawtooth", gain: 0.05 },
     { frequency: 190, endFrequency: 90, duration: 1.6, type: "sawtooth", gain: 0.04, delay: 1.2 },
@@ -118,11 +145,36 @@ export function createAudio(initiallyMuted: boolean, initiallyMusic: boolean): A
     }
   }
 
+  function playNoise(ctx: AudioContext, out: GainNode, tone: Tone, start: number): void {
+    const length = Math.ceil(ctx.sampleRate * (tone.duration + 0.05));
+    const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < length; i += 1) data[i] = Math.random() * 2 - 1;
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(tone.frequency, start);
+    if (tone.endFrequency) filter.frequency.exponentialRampToValueAtTime(tone.endFrequency, start + tone.duration);
+    const gain = ctx.createGain();
+    // A fast attack and a long tail, like a blast or a breath.
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(tone.gain, start + Math.min(0.03, tone.duration * 0.2));
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + tone.duration);
+    source.connect(filter).connect(gain).connect(out);
+    source.start(start);
+    source.stop(start + tone.duration + 0.05);
+  }
+
   function play(cue: Cue): void {
     if (!context || !master || muted || ducked) return;
     const now = context.currentTime;
     for (const tone of CUES[cue]) {
       const start = now + (tone.delay ?? 0);
+      if (tone.noise) {
+        playNoise(context, master, tone, start);
+        continue;
+      }
       const osc = context.createOscillator();
       const gain = context.createGain();
       osc.type = tone.type;

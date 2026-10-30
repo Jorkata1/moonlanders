@@ -4,39 +4,54 @@ import { laserDrill, type AstronautModel } from "./characters";
 import { box, glow, mesh, surface } from "./materials";
 import { FINISH, lathe, ring } from "./kit";
 
-/** Upper arm, elbow joint, forearm and glove; pivots at the shoulder. */
-function arm(): Group {
+/** Shoulder and elbow sit this far down the arm, and the knee this far down the leg, from their pivots. */
+const ELBOW_DROP = 0.27;
+const KNEE_DROP = 0.27;
+
+/** Upper arm, then forearm and glove on an elbow joint; pivots at the shoulder. */
+function arm(): { root: Group; elbow: Group } {
   const pivot = new Group();
   const suit = FINISH.suit();
   pivot.add(mesh(new SphereGeometry(0.1, 14, 10), suit, 0, -0.02, 0));
   pivot.add(mesh(new CapsuleGeometry(0.075, 0.14, 6, 12), suit, 0, -0.15, 0));
   pivot.add(ring(0.082, 0.022, FINISH.graphite(), 18).translateZ(0.25));
+  // Straight in play; the intro bends it.
+  const elbow = new Group();
+  elbow.position.y = -ELBOW_DROP;
+  elbow.userData.dynamic = true;
   const forearm = lathe([[0.07, 0], [0.085, 0.06], [0.09, 0.16], [0.08, 0.2]], suit, 16);
-  forearm.position.y = -0.46;
-  pivot.add(forearm);
-  pivot.add(mesh(new CylinderGeometry(0.095, 0.095, 0.05, 16), FINISH.orange(), 0, -0.44, 0));
+  forearm.position.y = -0.46 + ELBOW_DROP;
+  elbow.add(forearm);
+  elbow.add(mesh(new CylinderGeometry(0.095, 0.095, 0.05, 16), FINISH.orange(), 0, -0.44 + ELBOW_DROP, 0));
   // Chunky glove with a thumb.
-  pivot.add(box(0.13, 0.12, 0.11, FINISH.orange(), 0, -0.5, 0.01, 0.05));
-  pivot.add(mesh(new CapsuleGeometry(0.025, 0.04, 4, 8), FINISH.orange(), 0.07, -0.48, 0.04).rotateZ(0.5));
-  return pivot;
+  elbow.add(box(0.13, 0.12, 0.11, FINISH.orange(), 0, -0.5 + ELBOW_DROP, 0.01, 0.05));
+  elbow.add(mesh(new CapsuleGeometry(0.025, 0.04, 4, 8), FINISH.orange(), 0.07, -0.48 + ELBOW_DROP, 0.04).rotateZ(0.5));
+  pivot.add(elbow);
+  return { root: pivot, elbow };
 }
 
-/** Thigh, knee pad, shin and boot; pivots at the hip. */
-function leg(): Group {
+/** Thigh, then knee pad, shin and boot on a knee joint; pivots at the hip. */
+function leg(): { root: Group; knee: Group } {
   const pivot = new Group();
   const suit = FINISH.suit();
   pivot.add(mesh(new CapsuleGeometry(0.1, 0.12, 6, 12), suit, 0, -0.13, 0));
-  const knee = mesh(new SphereGeometry(0.085, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), FINISH.orange(), 0, -0.27, 0.07);
-  knee.rotation.x = Math.PI / 2;
-  pivot.add(knee);
+  // Straight in play; the intro bends it.
+  const knee = new Group();
+  knee.position.y = -KNEE_DROP;
+  knee.userData.dynamic = true;
+  const pad = mesh(new SphereGeometry(0.085, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), FINISH.orange(), 0, -0.27 + KNEE_DROP, 0.07);
+  pad.rotation.x = Math.PI / 2;
+  knee.add(pad);
   const shin = lathe([[0.1, 0], [0.11, 0.08], [0.095, 0.2]], suit, 16);
-  shin.position.y = -0.48;
-  pivot.add(shin);
+  shin.position.y = -0.48 + KNEE_DROP;
+  knee.add(shin);
   // Moon boot: a padded upper on a thick tread.
-  pivot.add(box(0.19, 0.13, 0.3, FINISH.shell(), 0, -0.5, 0.04, 0.06));
-  pivot.add(box(0.2, 0.05, 0.32, FINISH.rubber(), 0, -0.575, 0.04, 0.02));
-  pivot.add(box(0.2, 0.03, 0.12, FINISH.orange(), 0, -0.46, 0.14, 0.015));
-  return pivot;
+  knee.add(box(0.19, 0.13, 0.3, FINISH.shell(), 0, -0.5 + KNEE_DROP, 0.04, 0.06));
+  knee.add(box(0.2, 0.05, 0.32, FINISH.rubber(), 0, -0.575 + KNEE_DROP, 0.04, 0.02));
+  knee.add(box(0.2, 0.03, 0.12, FINISH.orange(), 0, -0.46 + KNEE_DROP, 0.14, 0.015));
+  pivot.add(knee);
+  bakeStatic(knee);
+  return { root: pivot, knee };
 }
 
 /** Life-support pack: shell, twin tanks, vents and the oxygen gauge strip. */
@@ -60,7 +75,9 @@ export function astronautModel(): AstronautModel {
   root.add(body);
   const suit = FINISH.suit();
 
-  const legs: [Group, Group] = [leg(), leg()];
+  const legParts = [leg(), leg()] as const;
+  const legs: [Group, Group] = [legParts[0].root, legParts[1].root];
+  const knees: [Group, Group] = [legParts[0].knee, legParts[1].knee];
   legs.forEach((l, i) => l.position.set(i === 0 ? -0.12 : 0.12, 0.6, 0));
 
   const torso = lathe([[0.0, 0.58], [0.2, 0.6], [0.25, 0.68], [0.28, 0.82], [0.29, 0.96], [0.25, 1.06], [0.16, 1.11], [0, 1.12]], suit, 28);
@@ -92,12 +109,14 @@ export function astronautModel(): AstronautModel {
 
   const oxygenLight = backpack(body);
 
-  const arms: [Group, Group] = [arm(), arm()];
+  const armParts = [arm(), arm()] as const;
+  const arms: [Group, Group] = [armParts[0].root, armParts[1].root];
+  const elbows: [Group, Group] = [armParts[0].elbow, armParts[1].elbow];
   arms[0].position.set(-0.34, 1.02, 0);
   arms[1].position.set(0.34, 1.02, 0);
   const drill = laserDrill(1.1);
-  drill.root.position.set(0, -0.52, 0.04);
-  arms[1].add(drill.root);
+  drill.root.position.set(0, -0.52 + ELBOW_DROP, 0.04);
+  elbows[1].add(drill.root);
   body.add(...arms);
 
   const headlamp = new SpotLight(0xfff1d8, 6, 9, 0.5, 0.6, 1.6);
@@ -112,5 +131,5 @@ export function astronautModel(): AstronautModel {
   for (const moving of [...arms, stackAnchor]) moving.userData.dynamic = true;
   bakeStatic(body);
   for (const l of legs) bakeStatic(l);
-  return { root, body, legs, arms, stackAnchor, drill, oxygenLight, headlamp };
+  return { root, body, legs, knees, arms, elbows, stackAnchor, drill, oxygenLight, headlamp };
 }
